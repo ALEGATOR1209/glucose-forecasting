@@ -1,0 +1,2 @@
+section,summary_path,subject,lwf_lambda,ft_test_mae,status
+hyperparams,/tmp/pytest-of-antonkulaga/pytest-84/test_aggregate_cli0/runs/livia/sweeps/hyperparams/summary.csv,livia,0.5,11.0,ok

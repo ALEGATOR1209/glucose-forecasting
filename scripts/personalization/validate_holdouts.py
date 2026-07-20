@@ -164,7 +164,7 @@ def main(
         "--holdout-dir",
     ),
     out_dir: Path = typer.Option(
-        Path("runs/personalization/holdout_validation"),
+        Path("data/output/runs/personalization/holdout_validation"),
         "--out-dir",
     ),
     users: Optional[str] = typer.Option(None, "--users"),

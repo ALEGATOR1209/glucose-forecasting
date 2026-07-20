@@ -1,0 +1,14 @@
+version: 1
+suites:
+  auto:
+    profiles: [ai-readi, loop]
+    covariate_mode: historical-exogenous
+    models: [NHITS, NBEATSx, LSTM, TFT, TiDE, xLSTM]
+  baseline:
+    profiles: [ai-readi, loop]
+    covariate_mode: univariate
+    models: [NBEATS, NHITS, NBEATSx]
+  recurrent:
+    profiles: [ai-readi, loop]
+    covariate_mode: historical-exogenous
+    models: [LSTM, GRU, RNN, xLSTM]

@@ -1,44 +1,85 @@
-# How to fetch a public checkpoint and run evaluation locally.
+# Load pretrained weights and run on a CSV
 
-## Context (data and metrics)
+## What you need
 
-GluMind was developed and tested on an “AI ready” dataset. That dataset cannot be shipped or redistributed with this repository because of licensing. To still show that the published weights run end-to-end, we evaluate on **Livia** data prepared in the same GluMind CSV shape.
-
-Livia has **type 1 diabetes**, which is a harder setting for glucose forecasting than typical cohorts. **Numbers on Livia are a sanity check, not a claim about general model performance**; do not treat them as headline benchmark scores.
-
----
-
-## Evaluate (`evaluate-glumind`)
-
-You need:
-
-- **`test_model`** — a folder that contains a compatible run (at minimum `config.json` / `tuning_meta.json` and `best_model.pt`, as produced by a training run or by the download step below).
-- **`test_data`** — a GluMind-ready CSV (for example Livia’s export).
-
-From the **repository root**, after `uv sync`, usualy `uv sync` could be omitted for briefness:
+From the repository root:
 
 ```bash
-uv run evaluate-glumind --run-dir test_model --test-csv test_data/livia_glumind_ready.csv
+uv sync
 ```
 
-`--run-dir` is the model directory; `--test-csv` is your test CSV path (adjust names to match your machine).
+| Path | What it is |
+|------|------------|
+| `test_model_sugar_one/` | SugarOne weights (glucose + basal/bolus/carbs) |
+| `test_model_glumind/` | GluMind weights (glucose + HR + steps) |
+| `test_data/livia_sugar_one_ready.csv` | Small demo CSV with pump columns |
+| `test_data/livia_glumind_ready.csv` | Small demo CSV in GluMind shape |
 
----
+For real benchmarks, prepare data with [glucose_data_processing](https://github.com/GlucoseDAO/glucose_data_processing) and put CSVs in `data/input/` — see [docs/DATA.md](docs/DATA.md).
 
-## Download from Hugging Face (`download-glumind-hf`)
+`--run-dir` = folder with `best_model.pt` and `tuning_meta.json` / `config.json`.  
+`--train-csv` = file used to fit scalers (use your full training CSV when you have it; for the demo, use the same file as `--test-csv`).
 
-Use this **only when `test_model` is empty** (or you intentionally want a clean folder). It fills `test_model` from the Hub; if the folder already has files, you risk a confusing mix of old and new artifacts.
-
-From the **repository root**, after `uv sync`:
+## SugarOne on your data
 
 ```bash
-uv run download-glumind-hf --repo-id GlucoseDao/glumind-global-h12 --output-dir test_model
+uv run evaluate-model \
+  --run-dir test_model_sugar_one \
+  --model-type sugar_one \
+  --test-csv data/input/loop_ai_ready_joined2.csv \
+  --train-csv data/input/loop_ai_ready_joined2.csv \
+  --batch-size 256
 ```
 
-Then evaluate as above, for example:
+## SugarOne on the demo CSV
+
+The demo has no train/val/test labels, so pass `--test-split ''`:
 
 ```bash
-uv run evaluate-glumind --run-dir test_model --test-csv test_data/livia_glumind_ready.csv
+uv run evaluate-model \
+  --run-dir test_model_sugar_one \
+  --model-type sugar_one \
+  --test-csv test_data/livia_sugar_one_ready.csv \
+  --train-csv test_data/livia_sugar_one_ready.csv \
+  --test-split '' \
+  --batch-size 256
 ```
 
-(Replace the CSV path with your actual file under `test_data`.)
+Glucose-only ablation (ignore pump covariates):
+
+```bash
+uv run evaluate-model \
+  --run-dir test_model_sugar_one \
+  --model-type sugar_one \
+  --test-csv test_data/livia_sugar_one_ready.csv \
+  --train-csv test_data/livia_sugar_one_ready.csv \
+  --zero-cov \
+  --test-split '' \
+  --batch-size 256
+```
+
+## GluMind
+
+```bash
+uv run evaluate-model \
+  --run-dir test_model_glumind \
+  --model-type glumind \
+  --test-csv test_data/livia_glumind_ready.csv \
+  --train-csv test_data/livia_glumind_ready.csv \
+  --test-split '' \
+  --batch-size 4096
+```
+
+## Download GluMind weights from Hugging Face (optional)
+
+Only if `test_model_glumind/` is empty:
+
+```bash
+uv run download-glumind-hf \
+  --repo-id GlucoseDao/glumind-global-h12 \
+  --output-dir test_model_glumind
+```
+
+Then run the GluMind command above.
+
+Livia is personal type‑1 data — use those numbers only to confirm the pipeline runs, not as a headline score.

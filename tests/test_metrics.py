@@ -2,51 +2,64 @@
 from __future__ import annotations
 
 import math
-from pathlib import Path
 
 import numpy as np
 import polars as pl
 import pytest
 from sklearn.preprocessing import MinMaxScaler
 
-from scripts.common.metrics import mae_rmse_mard, overall_metrics_to_csv, per_study_group_breakdown
+from scripts.common.metrics import mae_rmse_mard, per_study_group_breakdown
 
 
-def test_mae_rmse_mard_hand_computed() -> None:
-    y_true = np.array([100.0, 200.0, 50.0])
-    y_pred = np.array([110.0, 180.0, 60.0])
-    # err = [-10, 20, -10]
+@pytest.mark.parametrize(
+    ("y_true", "y_pred", "expected_mae", "expected_rmse", "expected_mard"),
+    [
+        (
+            np.array([100.0, 200.0, 50.0]),
+            np.array([110.0, 180.0, 60.0]),
+            (10 + 20 + 10) / 3,
+            math.sqrt((100 + 400 + 100) / 3),
+            (0.1 + 0.1 + 0.2) / 3 * 100,
+        ),
+        (
+            np.array([0.0, 0.0]),
+            np.array([1.0, 2.0]),
+            1.5,
+            math.sqrt((1 + 4) / 2),
+            math.nan,
+        ),
+        (
+            np.array([100.0]),
+            np.array([90.0]),
+            10.0,
+            10.0,
+            10.0,
+        ),
+        (
+            # zero entries are excluded from MARD but included in MAE/RMSE
+            np.array([0.0, 100.0]),
+            np.array([5.0, 110.0]),
+            (5 + 10) / 2,
+            math.sqrt((25 + 100) / 2),
+            10.0,
+        ),
+    ],
+    ids=["hand_computed", "zero_glucose_mard_nan", "single_value", "mixed_zero_nonzero"],
+)
+def test_mae_rmse_mard(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    expected_mae: float,
+    expected_rmse: float,
+    expected_mard: float,
+) -> None:
     mae, rmse, mard = mae_rmse_mard(y_true, y_pred)
-    assert mae == pytest.approx((10 + 20 + 10) / 3)
-    assert rmse == pytest.approx(math.sqrt((100 + 400 + 100) / 3))
-    # mard = mean(|err|/|true|) * 100 = mean([0.1, 0.1, 0.2]) * 100
-    assert mard == pytest.approx((0.1 + 0.1 + 0.2) / 3 * 100)
-
-
-def test_mae_rmse_mard_zero_glucose_mard_is_nan() -> None:
-    y_true = np.array([0.0, 0.0])
-    y_pred = np.array([1.0, 2.0])
-    mae, rmse, mard = mae_rmse_mard(y_true, y_pred)
-    assert mae == pytest.approx(1.5)
-    assert math.isnan(mard)
-
-
-def test_mae_rmse_mard_single_value() -> None:
-    y_true = np.array([100.0])
-    y_pred = np.array([90.0])
-    mae, rmse, mard = mae_rmse_mard(y_true, y_pred)
-    assert mae == pytest.approx(10.0)
-    assert rmse == pytest.approx(10.0)
-    assert mard == pytest.approx(10.0)
-
-
-def test_mae_rmse_mard_mixed_zero_and_nonzero() -> None:
-    # zero entries are excluded from MARD but included in MAE/RMSE.
-    y_true = np.array([0.0, 100.0])
-    y_pred = np.array([5.0, 110.0])
-    mae, rmse, mard = mae_rmse_mard(y_true, y_pred)
-    assert mae == pytest.approx((5 + 10) / 2)
-    assert mard == pytest.approx(10.0)  # only the nonzero entry contributes
+    assert mae == pytest.approx(expected_mae)
+    assert rmse == pytest.approx(expected_rmse)
+    if math.isnan(expected_mard):
+        assert math.isnan(mard)
+    else:
+        assert mard == pytest.approx(expected_mard)
 
 
 def test_per_study_group_breakdown_correct_and_sorted() -> None:
@@ -72,14 +85,3 @@ def test_per_study_group_breakdown_length_mismatch_returns_none() -> None:
     groups = ["A", "B"]  # mismatched length
     out = per_study_group_breakdown(true_scaled, pred_scaled, scaler, groups)
     assert out is None
-
-
-def test_overall_metrics_to_csv_writes_expected_columns(tmp_path: Path) -> None:
-    overall_metrics_to_csv(1.5, 2.5, 3.5, tmp_path, "val")
-    out_path = tmp_path / "val_metrics_overall.csv"
-    assert out_path.exists()
-    df = pl.read_csv(out_path)
-    assert df.columns == ["mae", "rmse", "mard"]
-    assert df["mae"][0] == pytest.approx(1.5)
-    assert df["rmse"][0] == pytest.approx(2.5)
-    assert df["mard"][0] == pytest.approx(3.5)

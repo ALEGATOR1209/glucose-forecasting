@@ -1,619 +1,332 @@
-# GluMind Glucose Forecasting Project
+# Glucose Forecasting
 
-This repository contains training, tuning, and comparison workflows for blood glucose forecasting on AI-READI-style datasets.
+<p align="center">
+  <strong>Multimodal deep learning for predicting blood glucose up to 60 minutes ahead</strong>
+</p>
 
-The project currently includes:
-- `GluMind` (our architecture) training pipeline — glucose, heart rate, steps.
-- `SugarOne` — insulin/carb covariate variant for loop-style CGM + pump data.
-- NeuralForecast baselines (`NHITS`, `TFT`, `NBEATSx`) tuning pipeline.
-- `GluFormer` evaluation script.
-- Unified `evaluate-model` CLI for GluMind and SugarOne checkpoints on arbitrary CSVs.
-- Run analysis artifacts and cross-model comparison reports.
+<p align="center">
+  CGM · insulin · carbohydrates · heart rate · activity
+</p>
 
-## Project Scope
+<p align="center">
+  <a href="https://github.com/GlucoseDAO/glucose-forecasting"><img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white"></a>
+  <a href="https://pytorch.org/"><img alt="PyTorch" src="https://img.shields.io/badge/PyTorch-2.9%2B-EE4C2C?logo=pytorch&logoColor=white"></a>
+  <a href="https://github.com/astral-sh/uv"><img alt="uv" src="https://img.shields.io/badge/managed%20with-uv-DE5FE9"></a>
+  <a href="https://github.com/orgs/GlucoseDAO/repositories"><img alt="GlucoseDAO" src="https://img.shields.io/badge/GlucoseDAO-open%20ecosystem-16A085"></a>
+</p>
 
-- Forecast horizon: default `12` steps (`60` minutes at `5min` frequency).
-- Main modalities used by GluMind: glucose, heart rate, steps.
-- Main modalities used by SugarOne: glucose, basal rate, bolus insulin, carbohydrates.
-- Main split mode `classic`: use train/val/test as provided.
-- Main split mode `trainval_test_as_val`: merge train+val for training, use test as validation (no held-out test output).
+This repository is both a **research platform** and a **reproducible model playground**:
 
-## Repository Structure
+- run pretrained glucose models on bundled demo data;
+- train multimodal transformers on CGM, pump, meal, and wearable signals;
+- compare SugarOne and GluMind with TFT, NHITS, xLSTM, and other baselines;
+- evaluate across Type 1 diabetes, Type 2 diabetes, pre-diabetes, and healthy cohorts;
+- connect directly to the [GlucoseDAO data pipeline](https://github.com/GlucoseDAO/glucose_data_processing), which catalogs **50+ public glucose datasets** and converts supported sources into ML-ready time series.
 
-- `scripts/glumind/train_glumind.py`: GluMind training/tuning entrypoint (also exposed as `train-glumind`).
-- `scripts/glumind/glumind_model.py`: model architecture module (checkpoint-friendly).
-- `scripts/glumind/evaluate_glumind.py`, `inference_glumind.py`, `download_from_huggingface.py`, `upload_to_huggingface.py`: evaluation, reproduction, Hub download/upload.
-- `scripts/glumind_uni/train_uniglumind.py`: univariate GluMind variant (glucose-only).
-- `scripts/sugar_one/train_sugar_one.py`: SugarOne training entrypoint (insulin/carb covariates).
-- `scripts/sugar_one/tune_sugar_one.py`: random-search hyperparameter tuner (`tune-sugar-one`).
-- `scripts/sugar_one/sugar_one_model.py`: SugarOne architecture module.
-- `scripts/sugar_one/evaluate_model.py`: unified evaluation for GluMind and SugarOne (`evaluate-model`).
-- `scripts/sugar_jepa/train_sugar_jepa.py`: SugarJepa training — SugarOne + our own JEPA glucose encoder as a 4th cross-attention stream.
-- `scripts/sugar_jepa/jepa_pretrain.py`: self-supervised (JEPA) pretraining for that encoder; produces an `encoder.pt` for `--jepa-init`.
-- `scripts/sugar_jepa/sugar_jepa_model.py`, `evaluate_sugar_jepa.py`: SugarJepa architecture module and standalone evaluation.
-- `test_model_glumind/`: bundled GluMind checkpoint for reviewers (weights + metrics).
-- `test_model_sugar_one/`: bundled SugarOne checkpoint for reviewers (weights + metrics).
-- `test_data/livia_glumind_ready.csv`: self-contained demo CSV for quick end-to-end evaluation.
-- `scripts/tune_nf_baselines_by_group.py`: NeuralForecast baselines (NHITS, TFT, NBEATSx).
-- `scripts/eval_gluformer_val_test_masked.py`: GluFormer (Hugging Face) evaluation on val/test.
-- `runs/`: model run outputs (metrics, checkpoints, predictions).
-- `marked_runs/`: curated run sets and analysis markdown files.
-- `CROSS_MODEL_COMPARISON.md`: cross-model summary report.
+> **Current flagship result:** SugarOne reaches **12.40 mg/dL MAE** and **9.91% MARD** over **1.67 million held-out forecast windows** from the joined Loop + AI-READI benchmark.
 
-## CLI reference
+---
 
-Every script supports **built-in help** when run with `uv`:
+## Try a pretrained model
 
-| How to run | Help flag |
-|------------|-----------|
-| Installed console commands (see `pyproject.toml` `[project.scripts]`) | `uv run <command> --help` or `-h` where supported |
-| Python entry files | `uv run python scripts/.../script.py --help` or `-h` (argparse) |
-
-Argparse-based CLIs (`train_glumind.py`, `tune_nf_baselines_by_group.py`, `eval_gluformer_val_test_masked.py`) print defaults in `--help` via `ArgumentDefaultsHelpFormatter` where configured. Typer apps list each option with `--help`.
-
-### `train-glumind` — `scripts/glumind/train_glumind.py`
-
-`uv run train-glumind --help` or `uv run python scripts/glumind/train_glumind.py --help`
-
-| Option | Meaning |
-|--------|---------|
-| `--csv` | Path to processed dataset CSV (required). |
-| `--unique_id` | `sequence_id` or `user_id`: which column defines a series. |
-| `--chunk_size` | Reserved for streaming chunk size (default 1_000_000). |
-| `--max_train_series` | Cap number of training series; `0` = all. |
-| `--max_eval_series` | Cap val/test series; `0` = all. |
-| `--drop_interpolated` | Drop rows with `Event Type == Interpolated`. |
-| `--mask_interpolated_targets` | Defined in CLI; not wired in the current training loop (no effect). |
-| `--study_groups` | Comma-separated `Study Group` filter; empty = all. |
-| `--split_scheme` | `classic` or `trainval_test_as_val` (train+val merged, test→val; no held-out test). |
-| `--mode` | `global`, `per_group`, `cohort_wise`, or `continual`. |
-| `--horizon` | Forecast length in steps (e.g. 12 = 60 min at 5 min). |
-| `--input_steps` | History length in steps (e.g. 80). |
-| `--d_model`, `--n_heads`, `--n_blocks`, `--ff_units`, `--dropout` | Architecture hyperparameters. |
-| `--epochs`, `--batch_size` | Training length and batch size. |
-| `--precision` | `fp32`, `bf16`, or `fp16` (mixed precision on CUDA when not fp32). |
-| `--compile_mode` | `none`, `default`, `reduce-overhead`, `max-autotune` (`torch.compile`). |
-| `--disable_tf32` | Turn off TF32 on CUDA. |
-| `--num_workers` | DataLoader workers; `-1` auto (GPU: up to 8). |
-| `--prefetch_factor` | Prefetch when `num_workers > 0`. |
-| `--lr`, `--weight_decay` | AdamW optimizer. |
-| `--patience` | Early stopping on val loss; `0` disables. |
-| `--log_every` | Print progress every N epochs. |
-| `--ckpt_every_n_epochs` | Save full checkpoint + val/test metrics under `checkpoints/epoch_NNNN/`; `0` off. |
-| `--val_every_n_epochs` | Run validation every N epochs. |
-| `--resume_from` | Path to `checkpoint.pt` (full state) to resume. |
-| `--lwf_lambda` | Learning-without-forgetting weight in `continual` mode. |
-| `--continual_order` | `default` or `reverse` study-group order. |
-| `--continual_val_scope` | `current_group` or `all_groups` for val in continual mode. |
-| `--device` | `cpu`, `mps`, or `cuda`. |
-| `--seed` | RNG seed. |
-| `--out_dir` | Base output directory for runs. |
-| `--save_predictions` | Defined in CLI; not wired in the current training script (no effect). |
-
-### `evaluate-glumind` — `scripts/glumind/evaluate_glumind.py`
-
-`uv run evaluate-glumind --help`
-
-| Option | Meaning |
-|--------|---------|
-| `--registry-dir` | Folder with `_analysis_registry.csv`; picks lowest `val_mae` run. |
-| `--run-dir` | Explicit run directory with `tuning_meta.json` / `config.json` and weights. Overrides registry. |
-| `--checkpoint` | Specific `.pt` weights; still need `--run-dir` for architecture metadata. |
-| `--test-csv` | CSV to score (required). |
-| `--train-csv` | CSV to fit MinMax scalers; default from metadata. |
-| `--test-split` | If the CSV has `Recommended Split`, keep only this value (e.g. `test`). |
-| `--glucose-only` | Ablation: replace HR/steps with zeros or a fixed scaled value. |
-| `--default-value` | With `--glucose-only`: `zero`, `mean`, or `median` for HR/steps replacement. |
-| `--batch-size` | Override DataLoader batch size (default from metadata). |
-| `--device` | Torch device (string, e.g. `cuda` or `cpu`). |
-
-You must pass either `--registry-dir` or `--run-dir`.
-
-For cross-model evaluation (GluMind or SugarOne on any compatible CSV), prefer **`evaluate-model`** below.
-
-### `evaluate-model` — `scripts/sugar_one/evaluate_model.py`
-
-`uv run evaluate-model --help`
-
-Unified evaluation for **GluMind** (HR + steps) and **SugarOne** (basal + bolus + carbs). Loads architecture metadata from the run folder, fits MinMax scalers on training rows, and reports **MAE, RMSE, MARD**.
-
-| Option | Meaning |
-|--------|---------|
-| `--test-csv` | CSV to score (required). |
-| `--run-dir` | Run directory with `tuning_meta.json` / `config.json` and `best_model.pt`. |
-| `--registry-dir` | Folder with `_analysis_registry.csv`; picks lowest `val_mae` run. |
-| `--checkpoint` | Explicit `.pt` weights; still need `--run-dir` for architecture metadata. |
-| `--train-csv` | CSV for scaler fitting (default: `csv` from metadata). Override when the training file from metadata is not on disk. |
-| `--model-type` | `auto` (detect from checkpoint), `glumind`, or `sugar_one`. |
-| `--test-split` | Keep rows where `Recommended Split` equals this value (default `test`). Use `--test-split=''` to score all rows. |
-| `--batch-size` | DataLoader batch size (default from metadata). |
-| `--device` | Torch device (default `cuda` when available). |
-| `--output-json` | Write metrics JSON for batch comparisons. |
-| `--log-interval` | Seconds between inference progress logs (default `10`; `0` = first and last only). |
-| `--zero-cov` | Zero all non-glucose covariates after imputation (glucose-only inference). Mutually exclusive with `--include-cov` / `--exclude-cov`. |
-| `--include-cov` | Comma-separated covariates to keep; zero all other non-glucose channels (e.g. `basal,bolus`). |
-| `--exclude-cov` | Comma-separated covariates to zero; keep the rest (e.g. `carbs`). |
-| `--covariates` | Print covariate columns and fill stats for `--test-csv`; no checkpoint required. |
-
-Full usage, ablation examples, and alias list: `scripts/sugar_one/README.md`.
-
-You must pass either `--registry-dir` or `--run-dir` (unless using `--covariates` only).
-
-### `inference-glumind` — `scripts/glumind/inference_glumind.py`
-
-`uv run inference-glumind --help`
-
-| Option | Meaning |
-|--------|---------|
-| `--run-dir` | Run directory with metadata and `best_model.pt` / `last_model.pt` (required). |
-| `--mode` | `auto` (from `split_scheme` in metadata), `test`, or `val_as_test`. |
-| `--glucose-only` | Ablation: zero or constant HR/steps in scaled space. |
-| `--default-value` | `zero`, `mean`, or `median` (non-glucose channels). |
-| `--device` | Torch device. |
-
-Re-runs inference on the **training CSV** from metadata and compares to saved `val_metrics_overall.csv` / `test_metrics_overall.csv` when present.
-
-### `download-glumind-hf` — `scripts/glumind/download_from_huggingface.py`
-
-`uv run download-glumind-hf --help`
-
-| Option | Meaning |
-|--------|---------|
-| `--repo-id` | Hugging Face model repo id, e.g. `OrgName/model-name`. |
-| `--output-dir` | Local directory for downloaded files. |
-| `--token` | Access token (private repos); empty for public. |
-| `--revision` | Branch, tag, or commit (default `main`). |
-
-Skips `checkpoints/` and `README.md` in the remote repo; downloads everything else.
-
-### `upload_to_huggingface.py` (not a console script)
-
-`uv run python scripts/glumind/upload_to_huggingface.py --help`
-
-| Option | Meaning |
-|--------|---------|
-| `--model-dir` | Local run directory with weights and JSON metadata. |
-| `--repo-name` | Repo name under the org, e.g. `glumind-global-h12`. |
-| `--org` | Hugging Face organization name. |
-| `--token` | Write token. |
-| `--private` / `--public` | Create private repo (default public). |
-
-### `tune_nf_baselines_by_group.py`
-
-`uv run python scripts/tune_nf_baselines_by_group.py -h`
-
-| Option | Meaning |
-|--------|---------|
-| `--csv` | Dataset CSV (required). |
-| `--split_scheme` | `classic` or `trainval_test_as_val`. |
-| `--unique_id` | `sequence_id` or `user_id`. |
-| `--model` | `tft`, `nhits`, `nbeatsx`, or `all`. |
-| `--grid` | Optional JSON file overriding hyperparameter grids per model. |
-| `--h_min` | Forecast horizon in **minutes** (default 60). |
-| `--freq` | Pandas offset string, e.g. `5min`. |
-| `--input_hours` | History length in hours for the model input window. |
-| `--train_tail_val_hours` | Internal val tail per train series (used by NeuralForecast `val_size`). |
-| `--max_steps`, `--val_check_steps` | PyTorch Lightning / NeuralForecast training steps. |
-| `--batch_size`, `--valid_batch_size` | Batches. |
-| `--windows_batch_size`, `--inference_windows_batch_size` | Window batching for NF. |
-| `--step_size` | Sliding step between windows. |
-| `--lr` | Learning rate. |
-| `--device` | `cpu`, `mps`, or `cuda`. |
-| `--seed` | Random seed. |
-| `--chunk_size` | Pandas read chunk size for streaming. |
-| `--max_train_series`, `--max_eval_series` | Subsample series; `0` = all. |
-| `--max_points_per_series` | Truncate each series to the last N points after impute. |
-| `--study_groups` | Comma-separated filter; empty uses all groups (unless global). |
-| `--global_model` | One model on all study groups (no per-group runs). |
-| `--out_dir` | Base output directory. |
-| `--save_predictions` | Write `*_predictions.csv` per split. |
-| `--ckpt_every_n_steps` | Checkpoint frequency in steps. |
-| `--early_stop_patience` | Early stopping on `valid_loss`. |
-| `--save_all_checkpoints` | Keep every checkpoint, not only best. |
-| `--eval_checkpoints` | After training, eval each saved checkpoint. |
-| `--train_event_type` | Optional: filter **train** rows by `Event Type`. |
-| `--drop_interpolated` | Remove interpolated rows from all splits. |
-| `--mask_interpolated_targets` | Keep history rows but drop interpolated **targets** from metrics. |
-
-### `eval_gluformer_val_test_masked.py`
-
-`uv run python scripts/eval_gluformer_val_test_masked.py -h`
-
-| Option | Meaning |
-|--------|---------|
-| `--csv` | Dataset CSV (required). |
-| `--unique_id` | `sequence_id` or `user_id`. |
-| `--model_id` | Hugging Face model id (default `njeffrie/Gluformer`). |
-| `--device` | `cpu`, `mps`, or `cuda`. |
-| `--splits` | `val`, `test`, or `both`. |
-| `--chunk_size` | Streaming read chunk size. |
-| `--max_eval_series` | Subsample series; `0` = all. |
-| `--max_points_per_series` | Truncate each series. |
-| `--drop_interpolated` | Remove interpolated rows before eval. |
-| `--mask_interpolated_targets` | Exclude interpolated **targets** from metrics. |
-| `--out_dir` | Base run output directory. |
-| `--save_predictions` | Save per-row predictions. |
-
-### `scripts/glumind_uni/train_uniglumind.py` (GluMindUni)
-
-Typer subcommand `train` (glucose-only model):
-
-`uv run python scripts/glumind_uni/train_uniglumind.py train --help`
-
-Options match `train-glumind` (same training modes and hyperparameters) except: glucose-only inputs; default `--out-dir` is `runs/glumind_uni`; device flag is `--device`. This Typer app does not expose `--chunk_size`, `--mask_interpolated_targets`, or `--save_predictions` (those exist on the argparse `train_glumind` CLI only).
-
-### `scripts/sugar_one/train_sugar_one.py` (SugarOne)
-
-Root command `main` (no subcommand name):
-
-`uv run python scripts/sugar_one/train_sugar_one.py --help`
-
-Same shape as GluMindUni: insulin/carb covariates, default `--out-dir` `runs/sugar_one`, `--csv` should be the loop + AI-READI joined CSV (see script docstring). Device: `--device`.
-
-Expected loop-style columns (aliases are resolved automatically by `evaluate-model`):
-
-- `Glucose Value (mg/dL)` or `Glucose (mg/dL)`
-- `Basal Rate (U/h)`
-- `Bolus Insulin (U)`
-- `Carbohydrates (g)`
-
-### `scripts/sugar_jepa/jepa_pretrain.py` (SugarJepa — SSL encoder pretraining)
-
-Self-supervised (JEPA) pretraining for the `JepaEncoder` that SugarJepa's 4th cross-attention stream uses. Masked latent prediction: an EMA target encoder encodes all patches, the context encoder sees only the unmasked ones, and a narrow predictor — given just the *positions* of the masked blocks — must reproduce their latents. The loss is smooth-L1 in **latent space**; nothing reconstructs glucose values.
-
-`uv run python scripts/sugar_jepa/jepa_pretrain.py --help`
+No external dataset or training run is required:
 
 ```bash
-uv run python scripts/sugar_jepa/jepa_pretrain.py \
-  --csv data/loop_and_ai_ready/loop_ai_ready_joined2_dev.csv --device cuda \
-  --window-stride 4 --epochs 50 --batch-size 256 \
-  --patch-size 8 --embed-dim 96 --n-layers 3 --n-heads 6
-```
-
-| Option | Meaning |
-|--------|---------|
-| `--input-steps` / `--patch-size` | Window and patch length; `input_steps` must divide by `patch_size` (default 128 / 8 = 16 patches). Must match the fine-tuning run. |
-| `--embed-dim` / `--n-layers` / `--n-heads` | Encoder shape (default 96 / 3 / 6). Must match the fine-tuning run. |
-| `--n-targets` / `--min-block` / `--max-block` | Masking: how many contiguous patch blocks to hide, and their size range. |
-| `--pred-dim` / `--pred-layers` / `--pred-heads` | Predictor shape (0 = `embed_dim // 2`). Discarded after SSL. |
-| `--ema-base` | Initial target-encoder momentum, cosine-ramped to 1.0 (default 0.996). |
-| `--window-stride` | Sliding-window stride; >1 cuts the overlap between adjacent windows. |
-| `--holdout-frac` | Fraction of **train** series held out to watch the objective (default 0.05). |
-| `--out-dir` | Parent directory (default `runs/jepa_encoder`). Each run gets its own timestamped subdirectory `jepa_encoder_w128_p8_d96_l3_h6_<timestamp>/`, so a second pretrain cannot overwrite the encoder an existing model was initialised from. A `latest.txt` in the parent names the most recent run. |
-
-Trains on the CSV's **train split only** — val/test rows never enter this stage, or every forecasting number downstream is leakage-contaminated. Each run writes `runs/jepa_encoder/jepa_encoder_w<steps>_p<patch>_d<dim>_l<layers>_h<heads>_<timestamp>/` holding `{config.json, encoder.pt, encoder_best.pt, pretrain_metrics.csv, plots/}`.
-
-**Judge the run by `latent_std` and `eff_rank`, not the loss.** Representation collapse (the encoder emitting nearly the same vector for every window) drives the loss toward zero and looks like success. Both print every epoch and land in the CSV. Reference: a random-init encoder at `embed_dim=96` gives `latent_std ≈ 0.67`; a monotone slide toward 0 is collapse.
-
-Fine-tune from the result by passing it to the trainer below:
-
-```bash
-uv run python scripts/sugar_jepa/train_sugar_jepa.py \
-  --csv data/loop_and_ai_ready/loop_ai_ready_joined2_dev.csv --device cuda \
-  --jepa-init runs/jepa_encoder/<run_name>/encoder.pt
-```
-
-### `scripts/sugar_jepa/train_sugar_jepa.py` (SugarJepa)
-
-SugarOne plus our own JEPA glucose encoder as a 4th cross-attention auxiliary (basal / bolus / carbs / **jepa**, learnable softmax mix). The branch reads glucose from `x[..., 0]` — the same 128-step lookback as the rest of the model — so the dataset contract is SugarOne's `(x, y)`. `global` mode only.
-
-`uv run python scripts/sugar_jepa/train_sugar_jepa.py --help`
-
-Shares SugarOne's flags, plus:
-
-| Option | Meaning |
-|--------|---------|
-| `--jepa-patch-size` / `--jepa-embed-dim` / `--jepa-layers` / `--jepa-heads` | Encoder shape (default 8 / 96 / 3 / 6). |
-| `--jepa-norm` | `instance` (per-window z-score, default) or `none`. |
-| `--jepa-lr` | LR for the encoder's own optimizer group (default 4e-5). The encoder **always trains** — there is no frozen mode. |
-| `--jepa-init` | Path to an SSL-pretrained `encoder.pt` (empty = random init). |
-
-Writes `<run_dir>/training_metrics.csv`, one row per epoch, including `mix_basal` / `mix_bolus` / `mix_carbs` / `mix_jepa` — the learned softmax weights, i.e. how much the model actually uses the JEPA stream.
-
-### `scripts/sugar_jepa/evaluate_sugar_jepa.py`
-
-Standalone eval for SugarJepa runs (not folded into `evaluate-model`). Reports MAE / RMSE / MARD overall and per Study Group, and prints the checkpoint's learned mix weights.
-
-```bash
-uv run python scripts/sugar_jepa/evaluate_sugar_jepa.py \
-  --run-dir runs/sugar_jepa/<run_name> \
-  --test-csv data/loop_and_ai_ready/loop_ai_ready_joined2_dev.csv \
-  --test-split test --device cuda
-```
-
-See [`scripts/sugar_jepa/README.md`](scripts/sugar_jepa/README.md) for the full story, including why the old 288-step frozen-CGM-JEPA path was retired.
-
-### `tune-sugar-one` — `scripts/sugar_one/tune_sugar_one.py`
-
-`uv run tune-sugar-one --help`
-
-Random hyperparameter search for SugarOne (global mode only). Behaviour is driven by a TOML config:
-
-| Option | Meaning |
-|--------|---------|
-| `--config`, `-c` | TOML config path (default: `scripts/sugar_one/tune_sugar_one_full.toml`). |
-| `--device` | `cuda`, `cpu`, or `mps` (default `cuda`). |
-| `--seed` | Override `.random_seed` from the config. |
-
-Shipped configs: `tune_sugar_one_full.toml` (production search) and `tune_sugar_one_dev.toml` (smaller laptop search).
-
-## Environment Setup
-
-Python requirement:
-- `>=3.12`
-
-Install dependencies with `uv`:
-
-```bash
+git clone https://github.com/GlucoseDAO/glucose-forecasting.git
+cd glucose-forecasting
 uv sync
+uv run glucose evaluate \
+  --run-dir test_model_sugar_one \
+  --data test_data/livia_sugar_one_ready.csv \
+  --train-data test_data/livia_sugar_one_ready.csv
 ```
 
-Run scripts with:
+The repository includes both the SugarOne checkpoint and demo data. The command runs local inference—your data is not uploaded anywhere—and reports MAE, RMSE, and MARD.
+
+## What makes the models interesting?
+
+Glucose is not an isolated signal. Insulin can lower it, carbohydrates can raise it, and activity and physiology change the response. Our models learn those relationships with parallel cross-attention and multi-scale temporal attention.
+
+```mermaid
+flowchart LR
+    G["CGM history"] --> E["Temporal embeddings"]
+    B["Basal insulin"] --> E
+    I["Bolus insulin"] --> E
+    C["Carbohydrates"] --> E
+
+    E --> X1["CGM ↔ basal<br/>cross-attention"]
+    E --> X2["CGM ↔ bolus<br/>cross-attention"]
+    E --> X3["CGM ↔ carbs<br/>cross-attention"]
+    E --> M["Multi-scale<br/>self-attention"]
+
+    X1 --> W["Learned multimodal mixing"]
+    X2 --> W
+    X3 --> W
+    M --> F["Forecast head"]
+    W --> F
+    F --> O["12 glucose predictions<br/>next 60 minutes"]
+
+    style G fill:#e8f4ff,stroke:#3776ab
+    style B fill:#fff3e8,stroke:#e67e22
+    style I fill:#fff3e8,stroke:#e67e22
+    style C fill:#f5eefe,stroke:#8e44ad
+    style O fill:#e8f7ee,stroke:#16834b,stroke-width:2px
+```
+
+SugarOne learns how much each pump/meal branch matters instead of combining covariates with fixed weights. GluMind applies the same multimodal idea to heart rate and step count. The package also provides standardized NeuralForecast baselines so architecture comparisons use the same holdout protocol and metrics.
+
+### Research spotlight: SugarJEPA
+
+**SugarJEPA combines supervised transformer forecasting with self-supervised JEPA representations.** It keeps SugarOne's multimodal backbone and adds a pretrained [CGM-JEPA](https://github.com/cruiseresearchgroup/CGM-JEPA) encoder as a fourth cross-attention stream:
+
+```mermaid
+flowchart LR
+    P["128-step pump context<br/>CGM · basal · bolus · carbs"] --> S["SugarOne<br/>multimodal transformer"]
+    L["24-hour glucose context"] --> J["Pretrained CGM-JEPA<br/>self-supervised encoder"]
+    S --> M["Learned softmax fusion"]
+    J --> M
+    M --> O["60-minute<br/>glucose forecast"]
+
+    style S fill:#e8f4ff,stroke:#3776ab
+    style J fill:#f5eefe,stroke:#8e44ad
+    style M fill:#fff3e8,stroke:#e67e22
+    style O fill:#e8f7ee,stroke:#16834b,stroke-width:2px
+```
+
+In a matched-hyperparameter development experiment, the frozen JEPA branch improved test **MAE by 4.66%** and **RMSE by 4.04%** over SugarOne, with gains on every aggregate metric across validation and test splits. This is a promising research result rather than a production claim: SugarJEPA currently requires longer series, was evaluated on fewer windows, and took about 4.6× longer per epoch.
+
+See the [full SugarJEPA vs SugarOne analysis](docs/SUGAR_JEPA_VS_SUGAR_ONE_DEV_COMPARISON.md) for results, limitations, and follow-up experiments.
+
+## Choose your model
+
+| Model | Inputs | Best for |
+|-------|--------|----------|
+| **SugarOne** | glucose + basal + bolus + carbs | Insulin pump / Loop users |
+| **SugarJEPA** | SugarOne + pretrained CGM-JEPA representation | Hybrid supervised/self-supervised research |
+| **GluMind** | glucose + heart rate + steps | Wearable / AI-READI cohorts |
+| **NeuralForecast** | configurable | TFT, NHITS, xLSTM, LSTM baselines |
+
+All custom models use parallel cross-attention multimodal fusion with multi-scale self-attention. SugarOne adds learnable softmax mixing weights across covariate branches.
+
+---
+
+## The `glucose` CLI
+
+One command for training, evaluation, and cross-model comparison. All outputs go to `data/output/runs/`.
+
+```mermaid
+flowchart TB
+    D["1 · Prepare an ML-ready CSV"]
+    T["2 · Train<br/><code>glucose train</code>"]
+    R["Saved run<br/>weights · configuration · metrics"]
+    E["3 · Evaluate or compare<br/><code>glucose evaluate</code>"]
+    O["Results<br/>metric tables · predictions · interactive plots"]
+
+    D --> T --> R --> E --> O
+    D -. "evaluate on new data" .-> E
+
+    style D fill:#e8f4e8,stroke:#4a8c4a
+    style T fill:#e8f4ff,stroke:#3776ab
+    style R fill:#eeeeff,stroke:#6666aa
+    style E fill:#fff3e8,stroke:#e67e22
+    style O fill:#f4e8e8,stroke:#8c4a4a
+```
+
+### Train
 
 ```bash
-uv run python <script>.py ...
+# Train NeuralForecast baselines (auto-detects Loop vs AI-READI covariates)
+uv run glucose train \
+  --backend neuralforecast \
+  --data data/input/loop_ai_ready_joined2_dev.csv \
+  --global-model
 ```
 
-Use `uv run <installed-command> --help` or `uv run python <script>.py --help` / `-h` for options; the [CLI reference](#cli-reference) lists them in one place.
+Each model gets its own timestamped run directory under `data/output/runs/` with weights, config, and metrics.
 
-## Expected Dataset Columns
+Custom PyTorch models (SugarOne, GluMind, SugarJEPA) have dedicated training scripts documented in the [CLI Reference](docs/CLI_REFERENCE.md). Their output goes to the same `data/output/runs/` structure and works with `glucose evaluate` identically.
 
-Core CSV columns expected by scripts:
-- `sequence_id`
-- `User ID`
-- `Timestamp (YYYY-MM-DDThh:mm:ss)`
-- `Recommended Split` (`train` / `val` / `test`)
-- `Study Group`
-- `Event Type`
-- `Glucose Value (mg/dL)`
-- `Heart Rate`
-- `Step Count`
-
-Loop / SugarOne columns (in addition to the core id/timestamp/split columns):
-
-- `Glucose (mg/dL)` or `Glucose Value (mg/dL)`
-- `Basal Rate (U/h)`
-- `Bolus Insulin (U)`
-- `Carbohydrates (g)`
-
-## GluMind Training
-
-Global mode example:
+### Evaluate one model
 
 ```bash
-uv run python scripts/glumind/train_glumind.py \
-  --csv data/actual/with_complex_steps_processing/ai_ready_processed_dataset.csv \
-  --mode global \
-  --device cuda \
-  --epochs 120 \
-  --patience 20 \
-  --batch_size 4096 \
-  --precision bf16 \
-  --compile_mode reduce-overhead \
-  --num_workers -1 \
-  --prefetch_factor 4 \
-  --val_every_n_epochs 2 \
-  --ckpt_every_n_epochs 10 \
-  --log_every 1 \
-  --out_dir runs/glumind
+# Read precomputed metrics from a run directory
+uv run glucose evaluate --run-dir data/output/runs/nf_holdout/__ALL__/TFT_20260718T223910Z
+
+# Re-run live inference on a different dataset
+uv run glucose evaluate \
+  --run-dir data/output/runs/sugar_one/my_run \
+  --data data/input/loop_ai_ready_joined2.csv
 ```
 
-Continual mode example:
+Auto-detects the backend (NeuralForecast, SugarOne, SugarJEPA, GluMind) from the run directory contents.
+
+### Compare models across backends
+
+The main payoff — mix any backends in one command:
 
 ```bash
-uv run python scripts/glumind/train_glumind.py \
-  --csv data/actual/with_complex_steps_processing/ai_ready_processed_dataset.csv \
-  --mode continual \
-  --lwf_lambda 0.2 \
-  --device cuda \
-  --epochs 80 \
-  --patience 10 \
-  --batch_size 2048 \
-  --precision bf16 \
-  --compile_mode reduce-overhead \
-  --num_workers -1 \
-  --prefetch_factor 4 \
-  --val_every_n_epochs 2 \
-  --ckpt_every_n_epochs 10 \
-  --log_every 1 \
-  --out_dir runs/glumind
+uv run glucose evaluate \
+  --run-dir sugar_jepa_dev --label SugarJEPA \
+  --run-dir test_model_sugar_one --label SugarOne \
+  --run-dir data/output/runs/nf_holdout/__ALL__/TFT_20260718T223910Z \
+  --run-dir data/output/runs/nf_holdout/__ALL__/NHITS_20260718T223624Z \
+  --out data/output/comparisons/full_comparison
 ```
 
-Tune mode using test as validation:
+Produces:
+
+```
+data/output/comparisons/full_comparison/
+├── test_metrics_summary.csv          # model, MAE, RMSE, MARD — sorted best to worst
+├── val_metrics_summary.csv
+├── study_group_metrics.csv           # per-cohort breakdown across all models
+├── run_manifest.json
+└── plots/
+    ├── metrics.html                  # interactive Plotly dashboard
+    ├── metrics.png
+    ├── study_group_metrics.html
+    └── study_group_metrics.png
+```
+
+### Hyperparameter search
 
 ```bash
-uv run python scripts/glumind/train_glumind.py \
-  --csv data/actual/with_complex_steps_processing/ai_ready_processed_dataset.csv \
-  --split_scheme trainval_test_as_val \
-  --mode global \
-  --device cuda \
-  --epochs 120 \
-  --patience 20 \
-  --batch_size 4096 \
-  --precision bf16 \
-  --out_dir runs/glumind
+uv run tune-sugar-one -c scripts/sugar_one/tune_sugar_one_dev.toml
 ```
 
-Resume training from full checkpoint:
+---
+
+## Benchmark results
+
+On the joined Loop + AI-READI dataset (`loop_ai_ready_joined2.csv`, 1.67M test windows, 60-min horizon):
+
+| Model | MAE (mg/dL) | RMSE | MARD |
+|-------|-------------|------|------|
+| **SugarOne** | **12.40** | **19.03** | **9.91%** |
+| SugarOne (glucose only, covariates zeroed) | 12.63 | 19.47 | 9.98% |
+| GluMind (cross-domain) | 12.73 | 19.66 | 10.28% |
+
+On the development subset (`loop_ai_ready_joined2_dev.csv`):
+
+| Model | MAE (mg/dL) | RMSE | MARD |
+|-------|-------------|------|------|
+| **SugarOne** | **17.6** | **26.3** | **14.2%** |
+| TFT (NeuralForecast) | 20.6 | 30.7 | 15.8% |
+| SugarJEPA | 21.6 | 31.9 | 17.0% |
+| NHITS (NeuralForecast) | 22.2 | 32.3 | 17.3% |
+
+Detailed analysis: [GluMind vs SugarOne](docs/GLUMIND_VS_SUGARONE_COMPARISON.md), [T1DM covariate ablation](docs/T1DM_COVARIATE_ABLATION_REPORT.md).
+
+The model family has also been evaluated across cohorts with increasing glycemic variability:
+
+![Per-cohort glucose prediction error for the wearable GluMind model and baselines](docs/presentation/fig_per_cohort_mae.png)
+
+_This earlier wearable benchmark uses “Sugar I” as the presentation name for the GluMind architecture. SugarOne is the newer pump-aware model with insulin and carbohydrate inputs._
+
+---
+
+## Part of the GlucoseDAO ecosystem
+
+Glucose forecasting is only useful when real-world CGM data can reach the model. This project is one part of the broader [GlucoseDAO open-source ecosystem](https://github.com/orgs/GlucoseDAO/repositories):
+
+```mermaid
+flowchart LR
+    D["50+ public CGM<br/>datasets"] --> P["glucose_data_processing<br/>download · normalize · resample"]
+    E["Personal CGM exports"] --> C["cgm_format<br/>unified CGM format"]
+    C --> P
+    P --> F["glucose-forecasting<br/>train · evaluate · compare"]
+    F --> R["gluRPC<br/>prediction service"]
+    F --> S["sugar-sugar<br/>human vs model game"]
+
+    style P fill:#e8f4ff,stroke:#3776ab,stroke-width:2px
+    style F fill:#e8f7ee,stroke:#16834b,stroke-width:2px
+```
+
+- **[glucose_data_processing](https://github.com/GlucoseDAO/glucose_data_processing)** is the data engine behind this work. It catalogs 50+ public glucose datasets and includes converters for sources such as Loop, HUPA, T1D-UOM, UCHTT1DM, AI-READI, Dexcom, Libre, and Medtronic.
+- **[cgm_format](https://github.com/GlucoseDAO/cgm_format)** converts common CGM exports and datasets into a unified format.
+- **[gluRPC](https://github.com/GlucoseDAO/gluRPC)** exposes glucose prediction through a gRPC service.
+- **[sugar-sugar](https://github.com/GlucoseDAO/sugar-sugar)** turns forecasting into a game where people can predict glucose values.
+
+Together, these repositories cover the path from **finding data → preparing it → training models → serving predictions → exploring human forecasting**.
+
+## Bring a dataset
+
+This repo does **not** ship the large datasets. Prepare ML-ready CSVs in the companion preprocessing project:
 
 ```bash
-uv run python scripts/glumind/train_glumind.py \
-  --csv data/actual/with_complex_steps_processing/ai_ready_processed_dataset.csv \
-  --mode global \
-  --resume_from runs/glumind/<run_name>/last_checkpoint.pt \
-  --epochs 250 \
-  --device cuda
+cd ..
+git clone https://github.com/GlucoseDAO/glucose_data_processing.git
+cd glucose_data_processing
+uv sync
+
+# Explore the available public datasets
+uv run glucose-download list
+
+# Download and process a supported dataset
+uv run glucose-download by-name "HUPA"
+uv run glucose-process DATA/hupa
+
+# Feed the ML-ready output directly into this forecasting project
+cd ../glucose-forecasting
+cp ../glucose_data_processing/OUTPUT/hupa_ml_ready.csv data/input/hupa_ml_ready.csv
+
+uv run glucose train \
+  --backend neuralforecast \
+  --data data/input/hupa_ml_ready.csv \
+  --global-model
 ```
 
-## SugarOne Training and Tuning
+The preprocessing pipeline detects supported formats, separates contiguous sequences, interpolates short gaps, resamples signals to a fixed frequency, and exports a standardized ML-ready CSV.
 
-Train on loop + AI-READI joined data:
+| File | What it is |
+|------|------------|
+| `loop_ai_ready_joined2.csv` | Full Loop + AI-READI benchmark (~12M rows) |
+| `loop_ai_ready_joined2_dev.csv` | Smaller subset for development |
 
-```bash
-uv run python scripts/sugar_one/train_sugar_one.py \
-  --csv data/loop_and_ai_ready/loop_ai_ready_joined2.csv \
-  --mode global \
-  --device cuda \
-  --epochs 120 \
-  --patience 10 \
-  --batch_size 256 \
-  --out_dir runs/sugar_one
+**No dataset yet?** Start with the bundled data in `test_data/` and pretrained weights in `test_model_sugar_one/` and `test_model_glumind/`.
+
+Forecasting schema details: [docs/DATA.md](docs/DATA.md). Dataset downloads, source-specific converters, and preprocessing options are documented in [glucose_data_processing](https://github.com/GlucoseDAO/glucose_data_processing).
+
+---
+
+## Repository layout
+
+```
+├── src/glucose_forecasting/        # installable package
+│   ├── models/                     # SugarOne, GluMind, GluMind-Uni definitions
+│   ├── data/                       # windowed time-series dataset classes
+│   ├── evaluation/                 # unified evaluate + compare pipeline
+│   ├── backends/neuralforecast/    # NF training, holdout eval, Plotly reporting
+│   └── cli.py                      # `glucose` command
+├── scripts/                        # model-specific training/tuning scripts
+├── test_model_sugar_one/           # pretrained SugarOne weights
+├── test_model_glumind/             # pretrained GluMind weights
+├── test_data/                      # small demo CSVs
+├── data/input/                     # your ML-ready CSVs (gitignored)
+├── data/output/runs/               # training and evaluation outputs
+└── docs/                           # reports, comparisons, data docs
 ```
 
-Production hyperparameter search:
+---
 
-```bash
-uv run tune-sugar-one --device cuda
-```
+## Troubleshooting
 
-Use `-c scripts/sugar_one/tune_sugar_one_dev.toml` for a smaller dev search.
+| Problem | Fix |
+|---------|-----|
+| `CSV not found` | Put files under `data/input/` or pass the correct `--data` path |
+| `no evaluation data found` | CSV has no `Recommended Split` column — data is evaluated as-is |
+| `no precomputed metrics and no --data` | Pass `--data your.csv` to run live inference |
+| Need flag help | `uv run glucose evaluate --help` or any `--help` |
 
-## NeuralForecast Baselines
+---
 
-NHITS example:
+## Documentation
 
-```bash
-uv run python scripts/tune_nf_baselines_by_group.py \
-  --csv data/actual/with_complex_steps_processing/ai_ready_processed_dataset.csv \
-  --model nhits \
-  --global_model \
-  --device cuda \
-  --mask_interpolated_targets \
-  --max_steps 300 \
-  --val_check_steps 50 \
-  --ckpt_every_n_steps 50 \
-  --early_stop_patience 6 \
-  --save_all_checkpoints \
-  --eval_checkpoints \
-  --out_dir runs/nhits
-```
-
-Supported NF models in this repo:
-- `nhits`
-- `tft`
-- `nbeatsx`
-
-## GluFormer Evaluation
-
-Evaluate val/test splits:
-
-```bash
-uv run python scripts/eval_gluformer_val_test_masked.py \
-  --csv data/actual/with_complex_steps_processing/ai_ready_plus_type1_v2_val_only_in_test.csv \
-  --device cuda \
-  --splits both \
-  --mask_interpolated_targets \
-  --save_predictions \
-  --out_dir runs/gluformer/ai_ready_plus_type1
-```
-
-## Checkpoints and Model Reuse
-
-GluMind checkpoints are saved as:
-- `best_model.pt` / `last_model.pt` (plain `state_dict`)
-- `checkpoint.pt` / `last_checkpoint.pt` (full training state)
-
-The architecture is now separated in:
-- `scripts/glumind/glumind_model.py`
-
-So you can load checkpoints without the full training script:
-
-```python
-import torch
-from scripts.glumind.glumind_model import GluMindModel
-
-model = GluMindModel(
-    n_time_steps=80, n_features=3, d_model=32, n_heads=4,
-    ff_units=128, n_blocks=3, prediction_horizon=12, dropout=0.1
-)
-state = torch.load("runs/.../best_model.pt", map_location="cpu", weights_only=True)
-model.load_state_dict(state)
-model.eval()
-```
-
-## Evaluate on `test_data/livia_glumind_ready.csv`
-
-The repo ships reviewer checkpoint bundles and a demo CSV so you can run inference without private training data:
-
-| Path | Role |
-|------|------|
-| `test_model_glumind/` | GluMind weights (`best_model.pt`, metadata, saved val/test metrics) |
-| `test_model_sugar_one/` | SugarOne weights (same layout) |
-| `test_data/livia_glumind_ready.csv` | Self-contained CGM sample (~140k rows) in GluMind CSV shape |
-
-Use **`evaluate-model`** (`scripts/sugar_one/evaluate_model.py`) for both architectures. It reads run metadata, restores the checkpoint, fits MinMax scalers, and prints **MAE, RMSE, MARD**.
-
-**Important for this demo file:**
-
-- `livia_glumind_ready.csv` has **no** `Recommended Split` column — pass **`--test-split ''`** to evaluate all rows.
-- Metadata in the bundled folders points at full training CSVs that are **not** redistributed — pass **`--train-csv test_data/livia_glumind_ready.csv`** so scalers are fit on the demo file.
-- The demo file has glucose (+ sparse HR/steps) but **no insulin/carb columns** — for SugarOne, pass **`--zero-cov`** so basal/bolus/carbs are zeroed after imputation.
-
-Livia is type-1 personal data; numbers here are a **sanity check**, not a headline benchmark.
-
-### GluMind (`test_model_glumind`)
-
-```powershell
-uv run evaluate-model `
-  --run-dir test_model_glumind `
-  --model-type glumind `
-  --test-csv test_data/livia_glumind_ready.csv `
-  --train-csv test_data/livia_glumind_ready.csv `
-  --test-split "" `
-  --batch-size 4096
-```
-
-Model type can be omitted when `--run-dir` contains a GluMind checkpoint (`--model-type auto` detects embed_hr / embed_steps weights).
-
-### SugarOne (`test_model_sugar_one`)
-
-```powershell
-uv run evaluate-model `
-  --run-dir test_model_sugar_one `
-  --model-type sugar_one `
-  --test-csv test_data/livia_glumind_ready.csv `
-  --train-csv test_data/livia_glumind_ready.csv `
-  --zero-cov `
-  --test-split "" `
-  --batch-size 256 `
-  --output-json docs/reports/milestone7_smoke_livia.json
-```
-
-With access to the full loop benchmark CSV, drop `--zero-cov` and point both `--test-csv` and `--train-csv` at `data/loop_and_ai_ready/loop_ai_ready_joined2.csv` to reproduce in-domain test metrics (~12.4 MAE on the bundled SugarOne checkpoint). See `docs/GLUMIND_VS_SUGARONE_COMPARISON.md`.
-
-### GluMind-only alternative (`evaluate-glumind`)
-
-The older GluMind-only script still works for the same demo:
-
-```powershell
-uv run evaluate-glumind `
-  --run-dir test_model_glumind `
-  --test-csv test_data/livia_glumind_ready.csv `
-  --train-csv test_data/livia_glumind_ready.csv `
-  --test-split ""
-```
-
-For every flag, see [CLI reference](#cli-reference) → **evaluate-model** / **evaluate-glumind**. To fetch GluMind weights from Hugging Face into a local folder, use `download-glumind-hf` (see `scripts/glumind/README.md`).
-
-## Outputs
-
-Typical run artifacts:
-- `val_metrics_overall.csv`
-- `val_metrics_by_study_group.csv`
-- `test_metrics_overall.csv`
-- `test_metrics_by_study_group.csv`
-- `tuning_meta.json`
-- `config.json`
-- `checkpoints/`
-
-## Reports
-
-Main analysis documents:
-- `CROSS_MODEL_COMPARISON.md`
-- `marked_runs/glumind/*/RUNS_ANALYSIS.md`
-- `runs/nhits/RUNS_ANALYSIS.md`
-
-## Notes
-
-- In `trainval_test_as_val` mode, held-out test metrics are intentionally disabled.
-- For quick validation after code changes, run smoke settings such as `--epochs 1 --max_train_series <small> --max_eval_series <small>`.
+| Doc | Contents |
+|-----|----------|
+| **[CLI Reference](docs/CLI_REFERENCE.md)** | Full flag tables for every training/eval script |
+| [Data guide](docs/DATA.md) | Preprocessing, CSV schemas, `data/input/` layout |
+| [Milestones](docs/MILESTONES.md) | Project history, naming, architecture decisions |
+| [GluMind vs SugarOne](docs/GLUMIND_VS_SUGARONE_COMPARISON.md) | Cross-model + ablation analysis |
+| [T1DM ablation](docs/T1DM_COVARIATE_ABLATION_REPORT.md) | Basal/bolus/carb covariate contributions |
+| [Legacy API migration](docs/LEGACY_API.md) | `scripts.*` → `glucose_forecasting.*` path |

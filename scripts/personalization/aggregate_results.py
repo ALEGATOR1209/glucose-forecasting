@@ -23,7 +23,7 @@ def _read_summary_csv(path: Path) -> list[dict[str, Any]]:
 @app.command()
 def main(
     root: Path = typer.Option(
-        Path("runs/personalization"),
+        Path("data/output/runs/personalization"),
         "--root",
         help="Root directory containing sweep/holdout artifacts.",
     ),

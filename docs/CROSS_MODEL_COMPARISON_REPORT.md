@@ -2,6 +2,8 @@
 
 This report compares the performance of the proposed **GluMind** model against NeuralForecast baselines (**NHITS**) and the **GluFormer** model.
 
+> **Naming:** In BGI Milestone 06 this model was labeled **“GluMind (Ours)”**. It is still **GluMind** (`scripts/glumind/`) — wearable glucose + HR + steps. The later insulin/carb adaptation was called GluMindIC and is now **SugarOne** (`scripts/sugar_one/`). See [MILESTONES.md](MILESTONES.md).
+
 ## 1. Overall Performance Comparison (MAE)
 
 Lower MAE (Mean Absolute Error) indicates better forecasting performance. All values are in mg/dL.

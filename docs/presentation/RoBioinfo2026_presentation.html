@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sugar I — RoBioinfo 2026</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css">
+<style>
+  :root {
+    --r-heading-color: #1a1a2e;
+    --r-main-color: #333;
+    --r-link-color: #2563eb;
+    --accent: #0891b2;
+    --accent2: #dc2626;
+    --accent3: #059669;
+    --bg-light: #f8fafc;
+  }
+  .reveal { font-size: 28px; }
+  .reveal h1 { font-size: 1.8em; color: var(--r-heading-color); }
+  .reveal h2 { font-size: 1.5em; color: var(--r-heading-color); margin-bottom: 0.5em; }
+  .reveal h3 { font-size: 1.15em; color: var(--accent); }
+  .reveal .subtitle { font-size: 0.75em; color: #64748b; margin-top: 0.3em; }
+  .reveal .authors { font-size: 0.65em; color: #475569; margin-top: 1em; }
+  .reveal .affiliations { font-size: 0.5em; color: #94a3b8; }
+
+  .reveal table { font-size: 0.7em; margin: 0.5em auto; border-collapse: collapse; }
+  .reveal table th { background: #1e293b; color: white; padding: 8px 14px; }
+  .reveal table td { padding: 6px 14px; border-bottom: 1px solid #e2e8f0; }
+  .reveal table tr:nth-child(even) { background: #f1f5f9; }
+  .reveal table .highlight { background: #dbeafe; font-weight: bold; }
+  .reveal table .best { color: var(--accent); font-weight: bold; }
+
+  .reveal .two-col { display: flex; gap: 2em; align-items: flex-start; }
+  .reveal .two-col > div { flex: 1; }
+  .reveal .three-col { display: flex; gap: 1.5em; }
+  .reveal .three-col > div { flex: 1; }
+
+  .reveal .box {
+    background: #f1f5f9; border-left: 4px solid var(--accent);
+    padding: 0.6em 1em; margin: 0.4em 0; border-radius: 4px;
+    font-size: 0.85em; text-align: left;
+  }
+  .reveal .box-red { border-left-color: var(--accent2); background: #fef2f2; }
+  .reveal .box-green { border-left-color: var(--accent3); background: #f0fdf4; }
+  .reveal .box-orange { border-left-color: #f59e0b; background: #fffbeb; }
+
+  .reveal .stat-row { display: flex; gap: 1em; justify-content: center; margin: 1em 0; }
+  .reveal .stat-box {
+    text-align: center; padding: 1em 1.5em;
+    background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+    border-radius: 12px; min-width: 140px;
+  }
+  .reveal .stat-box .number { font-size: 2em; font-weight: 800; color: var(--accent); }
+  .reveal .stat-box .label { font-size: 0.65em; color: #64748b; margin-top: 0.2em; }
+
+  .reveal .metric-bar {
+    display: flex; align-items: center; gap: 0.5em; margin: 0.3em 0; font-size: 0.8em;
+  }
+  .reveal .metric-bar .bar {
+    height: 22px; border-radius: 4px; display: flex; align-items: center;
+    padding: 0 8px; color: white; font-weight: 600; font-size: 0.85em;
+  }
+  .reveal .metric-bar .bar-ours { background: var(--accent); }
+  .reveal .metric-bar .bar-baseline { background: #f97316; }
+  .reveal .metric-bar .bar-gluformer { background: #8b5cf6; }
+  .reveal .metric-bar .bar-paper { background: var(--accent3); }
+
+  .reveal .pipeline-step {
+    display: inline-block; padding: 0.5em 1em; margin: 0.2em;
+    border-radius: 8px; font-size: 0.75em; font-weight: 600;
+  }
+  .reveal .step-input { background: #dbeafe; color: #1e40af; }
+  .reveal .step-process { background: #fef3c7; color: #92400e; }
+  .reveal .step-output { background: #d1fae5; color: #065f46; }
+
+  .reveal .footnote { font-size: 0.45em; color: #94a3b8; margin-top: 1em; }
+  .reveal .citation { font-size: 0.55em; color: #64748b; font-style: italic; }
+
+  .reveal ul { font-size: 0.85em; text-align: left; }
+  .reveal li { margin-bottom: 0.3em; }
+
+  .reveal .emoji { font-size: 1.2em; }
+  .reveal .key-point { font-size: 1.1em; color: var(--accent); font-weight: 600; }
+
+  .reveal .speaker-note { display: none; }
+
+  .reveal .cohort-gradient {
+    display: flex; gap: 0; margin: 0.8em auto; max-width: 90%;
+  }
+  .reveal .cohort-gradient > div {
+    flex: 1; padding: 0.6em 0.3em; text-align: center;
+    font-size: 0.65em; font-weight: 600; color: white;
+  }
+  .reveal .cg1 { background: #22c55e; border-radius: 8px 0 0 8px; }
+  .reveal .cg2 { background: #eab308; color: #1a1a2e; }
+  .reveal .cg3 { background: #f97316; }
+  .reveal .cg4 { background: #ef4444; }
+  .reveal .cg5 { background: #7c3aed; border-radius: 0 8px 8px 0; }
+</style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ============================================================ -->
+<!-- SLIDE 1: TITLE -->
+<!-- ============================================================ -->
+<section>
+  <h1 style="font-size:1.4em; line-height:1.3;">Multimodal Transformer-Based Prediction<br>of Biomedical Time Series from Wearable Sensors</h1>
+  <p class="subtitle">A Case Study in Next-Hour Glucose Forecasting</p>
+  <p class="authors">
+    <u>Livia Zaharia</u><sup>1,2,3</sup>, Andrii Sameliuk<sup>2</sup>, Alex Karmazin<sup>2</sup>,
+    Nikolay Usanov<sup>2,3</sup>, Anton Kulaga<sup>1,2</sup>
+  </p>
+  <p class="affiliations">
+    <sup>1</sup> IBIMA, Rostock University Medical Center &nbsp;|&nbsp;
+    <sup>2</sup> GlucoseDAO &nbsp;|&nbsp;
+    <sup>3</sup> HEALES
+  </p>
+  <p style="font-size:0.5em; color:#94a3b8; margin-top:2em;">
+    RoBioinfo 2026 &nbsp;&bull;&nbsp; Supported by BGI &times; SingularityNET Benevolent AI grant
+  </p>
+  <aside class="notes">
+    Introduce yourself, the team, and acknowledge the grant.
+    Mention this work bridges wearable biosensor data and ML for clinical applications.
+  </aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 2: WHY PREDICT GLUCOSE? (NEW — clinical motivation) -->
+<!-- ============================================================ -->
+<section>
+  <h2>Why Predict Glucose 1 Hour Ahead?</h2>
+  <div class="two-col">
+    <div>
+      <div class="box box-red">
+        <strong>The problem today:</strong> CGMs show <em>current</em> glucose.
+        By the time a patient sees a dangerous value, it's already happening.
+      </div>
+      <div class="box box-green" style="margin-top:0.8em;">
+        <strong>With 60-min forecasting:</strong>
+        <ul style="margin:0.3em 0 0 1em; font-size:0.9em;">
+          <li>Prevent hypoglycemic episodes before they occur</li>
+          <li>Optimize insulin dosing decisions</li>
+          <li>Improve Time-in-Range (TIR) — the key clinical metric</li>
+          <li>Enable proactive rather than reactive care</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <div class="stat-row" style="flex-direction:column; gap:0.8em;">
+        <div class="stat-box">
+          <div class="number">537M</div>
+          <div class="label">adults with diabetes worldwide (IDF 2021)</div>
+        </div>
+        <div class="stat-box">
+          <div class="number">60 min</div>
+          <div class="label">prediction window — enough time to act</div>
+        </div>
+        <div class="stat-box" style="background: linear-gradient(135deg, #f0fdf4, #dcfce7);">
+          <div class="number" style="color: var(--accent3);">70–180</div>
+          <div class="label">mg/dL — the clinical target range</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Frame the clinical problem FIRST. The audience is biologists — they need to understand
+    WHY this matters before any ML details. Emphasize: this is about preventing dangerous
+    events, not just an ML benchmark exercise.
+  </aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 3: CGMs — WHAT ARE THEY? (KEPT from original, refined) -->
+<!-- ============================================================ -->
+<section>
+  <h2>Continuous Glucose Monitors (CGMs)</h2>
+  <div class="two-col">
+    <div>
+      <ul>
+        <li><strong>Wearable sensor</strong> placed on the skin (upper arm or abdomen)</li>
+        <li>Measures <strong>interstitial glucose every 5 min</strong> — 288 readings/day</li>
+        <li>Worn continuously for <strong>10–14 days</strong> per sensor</li>
+        <li>Used by <strong>T1DM, T2DM,</strong> and increasingly by <strong>healthy</strong> individuals</li>
+      </ul>
+      <div class="box" style="margin-top:1em;">
+        <strong>Key output:</strong> A dense physiological time series — ideal for ML, but
+        <em>only one modality</em> of what wearables capture.
+      </div>
+    </div>
+    <div style="text-align:center;">
+      <p style="font-size:0.7em; color:#64748b;">
+        [INSERT: Photo of CGM sensor on arm + Dexcom anatomy diagram from original slide 2]
+      </p>
+      <div style="background:#f1f5f9; border-radius:8px; padding:2em; margin:1em;">
+        <p style="color:#94a3b8; font-size:0.8em;">CGM sensor image<br>+ cross-section diagram</p>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    Keep this slide — many in the audience may not have seen a CGM before.
+    Emphasize that it produces TIME SERIES data, which is the bridge to the computational work.
+  </aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 4: THE MULTIMODAL CHALLENGE (NEW — replaces old slide 4) -->
+<!-- ============================================================ -->
+<section>
+  <h2>The Challenge: Multimodal Wearable Data</h2>
+  <p style="font-size:0.9em;">Modern wearables produce <strong>multiple physiological signals</strong> at <strong>different sampling rates</strong>:</p>
+
+  <div class="three-col" style="margin: 1em 0;">
+    <div class="stat-box">
+      <div class="number" style="font-size:1.5em;">CGM</div>
+      <div class="label">Glucose every <strong>5 min</strong><br>metabolic state</div>
+    </div>
+    <div class="stat-box" style="background: linear-gradient(135deg, #fef2f2, #fecaca);">
+      <div class="number" style="font-size:1.5em; color:#dc2626;">HR</div>
+      <div class="label">Heart rate every <strong>1 min</strong><br>cardiovascular context</div>
+    </div>
+    <div class="stat-box" style="background: linear-gradient(135deg, #f0fdf4, #bbf7d0);">
+      <div class="number" style="font-size:1.5em; color:#059669;">Steps</div>
+      <div class="label">Activity every <strong>1 min</strong><br>physical context</div>
+    </div>
+  </div>
+
+  <div class="box box-orange">
+    <strong>Key challenge:</strong> How do you fuse signals that arrive at different rates,
+    carry complementary information, and have complex temporal dependencies?
+    <br><strong>Our answer:</strong> A transformer architecture with <em>cross-attention</em> for sensor fusion
+    and <em>multi-scale attention</em> for capturing patterns at different time resolutions.
+  </div>
+
+  <aside class="notes">
+    This replaces the sparse "Multimodal transformers... what ARE they?" slide.
+    Frame it as a BIOLOGICAL problem (different physiological signals) rather than an ML problem.
+    The audience understands that HR and activity affect glucose — now show that the model
+    can learn these relationships automatically.
+  </aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 5: SUGAR I ARCHITECTURE — HIGH LEVEL (CONDENSED from 4 slides) -->
+<!-- ============================================================ -->
+<section>
+  <h2>Sugar I Architecture: How It Works</h2>
+  <p style="font-size:0.8em; color:#64748b;">Inspired by GluMind (Bian et al., 2025) — not glucose-specific, generalizable to any multimodal time series</p>
+
+  <div style="margin: 0.8em auto; max-width: 95%;">
+    <div style="display:flex; gap:0; align-items:stretch;">
+      <div class="pipeline-step step-input" style="flex:1;">
+        <div style="font-size:1.1em;">Input</div>
+        <div style="font-weight:400; font-size:0.85em;">3h of CGM + HR + Steps<br>(80 time steps)</div>
+      </div>
+      <div style="display:flex; align-items:center; font-size:1.5em; color:#94a3b8;">&rarr;</div>
+      <div class="pipeline-step step-process" style="flex:1.5;">
+        <div style="font-size:1.1em;">Cross-Attention</div>
+        <div style="font-weight:400; font-size:0.85em;">Glucose queries HR & Steps<br>"What context matters?"</div>
+      </div>
+      <div style="display:flex; align-items:center; font-size:0.9em; color:#94a3b8;">+</div>
+      <div class="pipeline-step step-process" style="flex:1.5;">
+        <div style="font-size:1.1em;">Multi-Scale Attention</div>
+        <div style="font-weight:400; font-size:0.85em;">3 resolutions in parallel<br>5 min / 10 min / 20 min</div>
+      </div>
+      <div style="display:flex; align-items:center; font-size:1.5em; color:#94a3b8;">&rarr;</div>
+      <div class="pipeline-step step-output" style="flex:1;">
+        <div style="font-size:1.1em;">Output</div>
+        <div style="font-weight:400; font-size:0.85em;">Next 60 min glucose<br>(12 predictions)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="two-col" style="margin-top:1em;">
+    <div>
+      <h3>Cross-Attention (sensor fusion)</h3>
+      <ul style="font-size:0.75em;">
+        <li>Glucose signal acts as <strong>query</strong></li>
+        <li>HR and steps provide <strong>keys/values</strong></li>
+        <li>Model learns <em>when</em> and <em>how much</em> each sensor matters</li>
+        <li>Example: heart rate spike after a meal predicts glucose rise</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Multi-Scale Attention (temporal)</h3>
+      <ul style="font-size:0.75em;">
+        <li><strong>Fine scale (5 min):</strong> rapid glucose fluctuations</li>
+        <li><strong>Medium scale (10 min):</strong> meal/activity responses</li>
+        <li><strong>Coarse scale (20 min):</strong> longer metabolic trends</li>
+        <li>All three run <em>in parallel</em> and are combined</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="citation" style="margin-top:0.5em;">
+    [INSERT: Architecture diagram from original slide 6 — the general schema — it's excellent, keep it as a supplementary visual]
+  </p>
+
+  <aside class="notes">
+    This single slide REPLACES slides 4, 5, 7, 8, 9 from the original.
+    The key for this audience: frame cross-attention as "the model learns which sensor
+    matters when" — that's a biological insight. Give the meal+HR example.
+    Multi-scale = "looking at different time windows simultaneously."
+    Skip encoder-vs-decoder debate entirely — the audience doesn't need it.
+    If asked during Q&A, you can explain it's encoder-based (bidirectional context).
+  </aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 6: ARCHITECTURE DIAGRAM (visual from original slide 6) -->
+<!-- ============================================================ -->
+<section>
+  <h2>Sugar I: Full Architecture</h2>
+  <p style="font-size:0.8em; color:#64748b;">
+    [INSERT: The architecture diagram from original slide 6 (General schema) — this is an excellent figure, use it full-size here]
+  </p>
+  <div style="background:#f8fafc; border:2px dashed #cbd5e1; border-radius:12px; padding:4em 2em; text-align:center;">
+    <p style="color:#94a3b8; font-size:1em;">
+      Architecture diagram placeholder<br>
+      <span style="font-size:0.75em;">Use the existing GluMind general schema figure from the Timisoara presentation (slide 6)</span>
+    </p>
+  </div>
+  <div class="box" style="font-size:0.75em;">
+    <strong>Key innovation vs. original GluMind:</strong> Cross-attention and multi-scale attention run
+    <em>in parallel</em> (not sequentially), allowing the model to jointly reason about
+    sensor fusion and temporal context. Only ~197K parameters — lightweight enough for edge deployment.
+  </div>
+  <aside class="notes">
+    This is the detailed architecture slide for those who want it.
+    Emphasize it's LIGHTWEIGHT — only 48K parameters. Compare to GPT's billions.
+    Point out the parallel design is the key architectural contribution.
+    This slide can be skipped or discussed briefly depending on audience engagement.
+  </aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 7: DATASETS (NEW — important for bioinformatics audience) -->
+<!-- ============================================================ -->
+<section>
+  <h2>Datasets: Who Did We Study?</h2>
+  <div class="two-col">
+    <div>
+      <h3>AI-READI (Primary)</h3>
+      <div class="stat-box" style="margin-bottom:0.8em;">
+        <div class="number">896</div>
+        <div class="label">participants across 4 clinical cohorts</div>
+      </div>
+      <div class="cohort-gradient">
+        <div class="cg1">Healthy<br>n=224</div>
+        <div class="cg2">Pre-T2DM<br>n=224</div>
+        <div class="cg3">T2DM Oral<br>n=224</div>
+        <div class="cg4">T2DM Insulin<br>n=224</div>
+      </div>
+      <ul style="font-size:0.7em; margin-top:0.5em;">
+        <li>Dexcom G6 CGM + Fitbit HR & steps</li>
+        <li>~10 days of continuous recording per participant</li>
+        <li>Standardized clinical metadata</li>
+      </ul>
+    </div>
+    <div>
+      <h3>GlucoBench T1DM</h3>
+      <ul style="font-size:0.75em;">
+        <li>Type 1 diabetes cohort (Sergazinov et al., 2023)</li>
+        <li>Complementary to AI-READI's T2DM focus</li>
+        <li>Glucose-only (higher variability challenge)</li>
+      </ul>
+      <div class="box" style="margin-top:1em;">
+        <strong>Ongoing:</strong> We have catalogued <strong>53 public CGM datasets</strong> with
+        <strong>9 device-specific format converters</strong>. Training on the full corpus is in progress.
+      </div>
+      <div class="stat-row" style="margin-top:1em;">
+        <div class="stat-box" style="min-width:100px;">
+          <div class="number" style="font-size:1.5em;">53</div>
+          <div class="label">public CGM datasets catalogued</div>
+        </div>
+        <div class="stat-box" style="min-width:100px;">
+          <div class="number" style="font-size:1.5em;">9</div>
+          <div class="label">device format converters</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    THIS SLIDE IS KEY for bioinformaticians. They care about data: how much, from whom,
+    how collected. The 4-cohort structure of AI-READI is a natural experimental design.
+    Mention the 53-dataset catalogue as a resource the community can use.
+    Mention data is open (AI-READI Consortium).
+  </aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 8: RESULTS — AI-READI (T2DM + Prediabetes) -->
+<!-- ============================================================ -->
+<section>
+  <h2>Results: T2DM & Prediabetes (AI-READI)</h2>
+  <p style="font-size:0.8em;">60-minute glucose prediction, averaged across 4 cohorts</p>
+
+  <table style="width: 85%; margin: 0.8em auto;">
+    <thead>
+      <tr>
+        <th>Model</th>
+        <th>MAE (mg/dL) &darr;</th>
+        <th>RMSE (mg/dL) &darr;</th>
+        <th>MARD (%) &darr;</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="highlight">
+        <td><strong>Sugar I (Ours)</strong></td>
+        <td class="best">11.33</td>
+        <td class="best">17.73</td>
+        <td class="best">8.25%</td>
+      </tr>
+      <tr>
+        <td>GluMind original (paper)</td>
+        <td>12.95</td>
+        <td>18.19</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>NHITS (our runs)</td>
+        <td>20.60</td>
+        <td>34.45</td>
+        <td>13.33%</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="box box-green" style="max-width:85%; margin:0.8em auto;">
+    <strong>Clinical context:</strong> CGM sensors themselves have ~10% MARD.
+    Sugar I's 8.25% MARD means our <em>predictions</em> are approaching the accuracy
+    of the <em>sensor itself</em> — at 60 minutes into the future.
+  </div>
+
+  <div class="box" style="max-width:85%; margin:0.5em auto; font-size:0.75em;">
+    <strong>What these metrics mean:</strong>
+    MAE = average error in mg/dL &nbsp;|&nbsp;
+    RMSE = penalizes large errors more &nbsp;|&nbsp;
+    MARD = % error relative to actual glucose level (lower = better for all)
+  </div>
+
+  <aside class="notes">
+    EXPLAIN the metrics — the audience may not know MAE/RMSE.
+    The KEY insight: our prediction MARD (8.25%) is BETTER than the CGM sensor's own
+    measurement MARD (~10%). That's a powerful soundbite.
+    Mention the improvement over the original GluMind paper results.
+  </aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 9: RESULTS — T1DM -->
+<!-- ============================================================ -->
+<section>
+  <h2>Results: Type 1 Diabetes (GlucoBench)</h2>
+  <p style="font-size:0.8em;">T1DM — higher glycemic variability, harder prediction task</p>
+
+  <table style="width: 85%; margin: 0.8em auto;">
+    <thead>
+      <tr>
+        <th>Model</th>
+        <th>MAE (mg/dL) &darr;</th>
+        <th>RMSE (mg/dL) &darr;</th>
+        <th>MARD (%) &darr;</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="highlight">
+        <td><strong>Sugar I (Ours)</strong></td>
+        <td class="best">14.51</td>
+        <td>23.00</td>
+        <td class="best">10.99%</td>
+      </tr>
+      <tr>
+        <td>NHITS (our runs)</td>
+        <td>15.11</td>
+        <td class="best">21.05</td>
+        <td>11.24%</td>
+      </tr>
+      <tr>
+        <td>GluFormer</td>
+        <td>19.53</td>
+        <td>33.28</td>
+        <td>15.10%</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="box box-orange" style="max-width:85%; margin:0.8em auto;">
+    <strong>Honest note:</strong> NHITS retains lower RMSE on T1DM (21.05 vs 23.00),
+    suggesting Sugar I occasionally makes larger errors on extreme glucose swings — an area
+    for improvement. But Sugar I leads on MAE and MARD (the clinically preferred metric).
+  </div>
+
+  <aside class="notes">
+    Be transparent about the RMSE gap — scientists respect honesty.
+    T1DM is HARDER because glucose swings are larger and less predictable
+    (exogenous insulin dosing is a confounder we don't always observe).
+    Mention that MARD is what clinicians prefer because it accounts for the
+    difference between an error at 80 mg/dL vs 300 mg/dL.
+  </aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 10: PER-COHORT RESULTS (NEW — biologically interesting) -->
+<!-- ============================================================ -->
+<section>
+  <h2>Error Tracks Disease Severity</h2>
+  <p style="font-size:0.8em;">Per-cohort MAE (mg/dL) — prediction difficulty mirrors clinical progression</p>
+
+  <div class="cohort-gradient" style="margin-bottom:0.3em;">
+    <div class="cg1">Healthy</div>
+    <div class="cg2">Pre-T2DM</div>
+    <div class="cg3">T2DM Oral</div>
+    <div class="cg4">T2DM Insulin</div>
+    <div class="cg5">T1DM</div>
+  </div>
+
+  <table style="width:95%; margin: 0.3em auto;">
+    <thead>
+      <tr>
+        <th>Model</th>
+        <th>Healthy</th>
+        <th>Pre-T2DM</th>
+        <th>T2DM Oral</th>
+        <th>T2DM Insulin</th>
+        <th>T1DM</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="highlight">
+        <td><strong>Sugar I</strong></td>
+        <td class="best">9.57</td>
+        <td class="best">9.89</td>
+        <td class="best">12.35</td>
+        <td class="best">13.58</td>
+        <td class="best">15.06</td>
+      </tr>
+      <tr>
+        <td>NHITS</td>
+        <td>16.86</td>
+        <td>14.00</td>
+        <td>19.97</td>
+        <td>28.31</td>
+        <td>15.53</td>
+      </tr>
+      <tr>
+        <td>GluFormer</td>
+        <td>17.08</td>
+        <td>14.21</td>
+        <td>19.36</td>
+        <td>26.36</td>
+        <td>15.46</td>
+      </tr>
+      <tr>
+        <td>GluMind orig.</td>
+        <td>10.58</td>
+        <td>11.08</td>
+        <td>13.74</td>
+        <td>16.41</td>
+        <td>—</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="two-col" style="margin-top:0.8em;">
+    <div class="box box-green">
+      <strong>Biological pattern:</strong> Prediction error increases monotonically from
+      Healthy &rarr; Pre-T2DM &rarr; Oral T2DM &rarr; Insulin T2DM &rarr; T1DM.
+      This reflects increasing glycemic variability with disease progression.
+    </div>
+    <div class="box">
+      <strong>Largest improvement:</strong> In the <strong>Insulin-T2DM</strong> cohort, Sugar I reduces
+      MAE by <strong>~50%</strong> vs. baselines (13.58 vs. 26–28 mg/dL). Multimodal fusion matters most
+      where glucose dynamics are most complex.
+    </div>
+  </div>
+
+  <aside class="notes">
+    THIS is the slide that will resonate most with bioinformaticians.
+    The error gradient is a BIOLOGICAL finding: model difficulty mirrors disease progression.
+    This is expected (more variability = harder prediction) but it's nice to see it so cleanly.
+    The 50% improvement in insulin-T2DM is the strongest selling point — emphasize that
+    cross-attention to HR/steps matters most when glucose dynamics are complex.
+  </aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 11: SUGAR-SUGAR HUMAN BENCHMARKING (NEW — very novel) -->
+<!-- ============================================================ -->
+<section>
+  <h2>Sugar-Sugar: Can Humans Beat the Model?</h2>
+  <p style="font-size:0.8em; color:#64748b;">
+    First published human accuracy reference for glucose forecasting
+  </p>
+
+  <div class="two-col">
+    <div>
+      <h3>Study Design</h3>
+      <ul style="font-size:0.8em;">
+        <li>Web application (bilingual: EN/DE)</li>
+        <li>Participant sees <strong>3 hours of real CGM data</strong></li>
+        <li>Draws their prediction for the next <strong>60 minutes</strong> by placing 12 points</li>
+        <li>Ethics approval: <strong>UMR Rostock</strong></li>
+      </ul>
+
+      <div class="stat-row" style="margin-top:1em; flex-direction:column; gap:0.5em;">
+        <div class="stat-box" style="padding:0.6em 1em;">
+          <div class="number" style="font-size:1.5em;">200+</div>
+          <div class="label">target participants</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <h3>4 Participant Groups</h3>
+      <div style="font-size:0.8em;">
+        <div class="box" style="padding:0.4em 0.8em; margin:0.3em 0;">
+          <strong>Group 1:</strong> No diabetes, no CGM experience
+        </div>
+        <div class="box" style="padding:0.4em 0.8em; margin:0.3em 0;">
+          <strong>Group 2:</strong> No diabetes, CGM experience
+        </div>
+        <div class="box" style="padding:0.4em 0.8em; margin:0.3em 0;">
+          <strong>Group 3:</strong> Diabetes, no CGM experience
+        </div>
+        <div class="box" style="padding:0.4em 0.8em; margin:0.3em 0;">
+          <strong>Group 4:</strong> Diabetes + CGM experience
+        </div>
+      </div>
+      <div class="box box-green" style="margin-top:0.8em;">
+        <strong>Key question:</strong> Does lived experience with diabetes or CGMs improve
+        prediction accuracy? And can any human group match Sugar I?
+      </div>
+    </div>
+  </div>
+
+  <p class="footnote">
+    github.com/GlucoseDAO/sugar-sugar &nbsp;&bull;&nbsp; Currently in recruitment
+  </p>
+
+  <aside class="notes">
+    This is the most NOVEL aspect of the work and will generate the most discussion.
+    No one has published human accuracy baselines for glucose forecasting before.
+    The 2x2 design (diabetes yes/no x CGM experience yes/no) is clean and interpretable.
+    Mention: results are not in yet — still recruiting. But the framework is transferable
+    to any biomedical time series benchmarking.
+  </aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 12: CONTINUAL LEARNING (CONDENSED from 2 slides) -->
+<!-- ============================================================ -->
+<section>
+  <h2>Bonus: Learning Without Forgetting</h2>
+  <p style="font-size:0.8em; color:#64748b;">How to train on new patient cohorts without losing accuracy on previous ones</p>
+
+  <div class="two-col">
+    <div>
+      <h3 style="color:var(--accent2);">The Problem</h3>
+      <p style="font-size:0.8em;">
+        Training sequentially on cohorts (Healthy &rarr; Pre-T2DM &rarr; T2DM) causes
+        <strong>catastrophic forgetting</strong>: the model forgets earlier cohorts.
+      </p>
+      <p style="font-size:0.8em;">This matters for clinical deployment where new hospital data arrives over time.</p>
+    </div>
+    <div>
+      <h3 style="color:var(--accent3);">Our Solution</h3>
+      <p style="font-size:0.8em;">
+        <strong>Knowledge distillation:</strong> A frozen "teacher" model preserves old knowledge
+        while a "student" learns new cohort patterns.
+      </p>
+      <p style="font-size:0.85em; text-align:center; margin:0.5em 0;">
+        <strong>L = L<sub>task</sub> + &lambda; &middot; L<sub>distill</sub></strong>
+      </p>
+      <p style="font-size:0.75em;">
+        &lambda; = 0.3 balances plasticity (new learning) vs. stability (old knowledge).
+        Result: only ~0.5 mg/dL MAE trade-off vs. global training.
+      </p>
+    </div>
+  </div>
+
+  <div class="box" style="max-width:90%; margin: 0.8em auto;">
+    <strong>Why this matters clinically:</strong> A model deployed in a hospital can be updated with
+    local patient data without retraining from scratch and without losing what it already knows.
+    This enables <strong>personalized medicine at scale</strong>.
+  </div>
+
+  <aside class="notes">
+    CONDENSED from 2 slides. Skip the detailed LwF architecture diagram unless asked.
+    Frame it as a CLINICAL benefit: hospital deployment with incremental updates.
+    The lambda=0.3 finding and the small 0.5 MAE trade-off are the key numbers.
+    This can be a quick slide — move through it faster if time is tight.
+  </aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 13: GENERALIZABILITY (NEW — beyond glucose) -->
+<!-- ============================================================ -->
+<section>
+  <h2>Beyond Glucose: A General-Purpose Architecture</h2>
+  <p style="font-size:0.85em;">
+    Sugar I's cross-attention + multi-scale design is <strong>not glucose-specific</strong>.
+    It applies to any multimodal biomedical time series:
+  </p>
+
+  <div class="three-col" style="margin: 1em 0;">
+    <div class="box" style="text-align:center;">
+      <div style="font-size:1.5em;">ECG + SpO2</div>
+      <p style="font-size:0.75em; margin:0.3em 0;">Cardiac event prediction from wearable ECG + pulse oximetry</p>
+    </div>
+    <div class="box" style="text-align:center;">
+      <div style="font-size:1.5em;">EEG + EMG</div>
+      <p style="font-size:0.75em; margin:0.3em 0;">Sleep staging from multi-channel neurophysiology</p>
+    </div>
+    <div class="box" style="text-align:center;">
+      <div style="font-size:1.5em;">Cortisol + HR + Activity</div>
+      <p style="font-size:0.75em; margin:0.3em 0;">Stress response prediction from multimodal wearables</p>
+    </div>
+  </div>
+
+  <div class="box box-green" style="font-size:0.85em;">
+    <strong>The pattern:</strong> Whenever you have multiple physiological signals at different
+    sampling rates that carry complementary information, cross-attention can learn to fuse them.
+    The architecture is a <em>recipe</em>, not a one-off solution.
+  </div>
+
+  <aside class="notes">
+    This is important for bioinformaticians — they may work with other biosignal types.
+    Frame Sugar I as a general tool they could apply to their own data.
+    Mention that the codebase is modular: swapping in different input modalities requires
+    minimal code changes (just the embedding layer).
+  </aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 14: CONCLUSIONS & FUTURE -->
+<!-- ============================================================ -->
+<section>
+  <h2>Conclusions & Next Steps</h2>
+
+  <div class="two-col">
+    <div>
+      <h3>What We Showed</h3>
+      <ul style="font-size:0.8em;">
+        <li>Multimodal cross-attention transformers <strong>outperform baselines by 40–50%</strong> on T2DM</li>
+        <li>Prediction accuracy (8.25% MARD) <strong>approaches CGM sensor accuracy</strong></li>
+        <li>Error pattern <strong>mirrors disease severity</strong> — a biological signal</li>
+        <li>Continual learning enables <strong>cohort-incremental training</strong> with minimal forgetting</li>
+        <li>Architecture is <strong>general-purpose</strong>, not glucose-specific</li>
+      </ul>
+    </div>
+    <div>
+      <h3>What's Next</h3>
+      <ul style="font-size:0.8em;">
+        <li><strong>Sugar-Sugar study:</strong> First human vs. AI glucose forecasting comparison (recruiting now)</li>
+        <li><strong>Full training corpus:</strong> 53 datasets with 9 format converters</li>
+        <li><strong>Insulin + carbs integration:</strong> GluMindIC variant for closed-loop pump systems</li>
+        <li><strong>Edge deployment:</strong> ~197K parameters — feasible for on-device inference</li>
+      </ul>
+    </div>
+  </div>
+
+  <div style="margin-top:1.5em; text-align:center;">
+    <div style="display:inline-block; padding:0.5em 2em; background:#1e293b; color:white; border-radius:8px; font-size:0.9em;">
+      Code &amp; pipelines: <strong>github.com/GlucoseDAO</strong>
+      &nbsp;&bull;&nbsp;
+      Models: <strong>HuggingFace</strong>
+    </div>
+  </div>
+
+  <p class="footnote">
+    Supported by a BGI &times; SingularityNET Benevolent AI grant
+  </p>
+
+  <aside class="notes">
+    Keep this crisp. End on forward-looking notes.
+    The 48K parameter count is a good teaser — people expect transformers to be huge.
+    Invite questions. Mention the open-source code/models for anyone who wants to try.
+  </aside>
+</section>
+
+<!-- ============================================================ -->
+<!-- SLIDE 15: THANK YOU / Q&A -->
+<!-- ============================================================ -->
+<section>
+  <h1 style="margin-top:2em;">Thank You</h1>
+  <p style="font-size:0.9em; color:#64748b;">Questions?</p>
+
+  <div style="margin:2em auto; max-width:500px; text-align:left; font-size:0.75em;">
+    <p><strong>Code:</strong> github.com/GlucoseDAO</p>
+    <p><strong>Sugar-Sugar study:</strong> github.com/GlucoseDAO/sugar-sugar</p>
+    <p><strong>Model weights:</strong> HuggingFace (GlucoseDAO)</p>
+    <p><strong>Contact:</strong> livia.zaharia@uni-rostock.de</p>
+  </div>
+
+  <p class="affiliations" style="margin-top:2em;">
+    IBIMA, Rostock University Medical Center &nbsp;|&nbsp; GlucoseDAO &nbsp;|&nbsp; HEALES
+  </p>
+</section>
+
+</div><!-- /slides -->
+</div><!-- /reveal -->
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true,
+    slideNumber: 'c/t',
+    width: 1200,
+    height: 700,
+    margin: 0.05,
+    plugins: [RevealNotes]
+  });
+</script>
+</body>
+</html>

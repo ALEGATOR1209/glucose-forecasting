@@ -1,5 +1,5 @@
 # Production SugarOne training on full loop_ai_ready_joined2 data.
-# Best hyperparameters from runs/sugar_one_tune/explore_dev2/leaderboard.csv
+# Best hyperparameters from data/output/runs/sugar_one_tune/explore_dev2/leaderboard.csv
 # (trial 1, val_mae 18.35): n_blocks=5, input_steps=128, lr=0.0004, etc.
 #
 # Run (uses this file by default):
@@ -9,8 +9,8 @@
 #   uv run tune-sugar-one -c scripts/sugar_one/tune_sugar_one_dev.toml
 
 [paths]
-csv = "data/loop_and_ai_ready/loop_ai_ready_joined2.csv"
-output_dir = "runs/sugar_one_tune/production"
+csv = "data/input/loop_ai_ready_joined2.csv"
+output_dir = "data/output/runs/sugar_one_tune/production"
 
 [dataset]
 unique_id = "sequence_id"

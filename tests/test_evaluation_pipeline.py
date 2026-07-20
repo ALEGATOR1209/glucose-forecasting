@@ -15,6 +15,14 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from scripts.common.evaluation import _load_csv_flexible, _run_evaluate
 from scripts.glumind.glumind_model import GluMindModel
+from tests.conftest import (
+    TINY_D_MODEL,
+    TINY_FF_UNITS,
+    TINY_HORIZON,
+    TINY_INPUT_STEPS,
+    TINY_N_BLOCKS,
+    TINY_N_HEADS,
+)
 
 TS_FORMAT = "%Y-%m-%dT%H:%M:%S"
 COL_SEQ = "sequence_id"
@@ -23,25 +31,31 @@ COL_SPLIT = "Recommended Split"
 COL_GROUP = "Study Group"
 
 
-def _write_csv(path: Path, header_glucose_col: str, include_hr: bool, include_steps: bool) -> None:
+def _write_csv(
+    path: Path,
+    header_glucose_col: str,
+    include_hr: bool,
+    include_steps: bool,
+    splits: list[str] | None = None,
+) -> None:
     base = datetime(2020, 1, 1)
-    rows = []
-    for i in range(10):
-        row = {
+    row_splits = splits or ["test"] * 10
+    pl.DataFrame(
+        {
             COL_SEQ: "a",
             COL_USER: "u1",
-            "Timestamp (YYYY-MM-DDThh:mm:ss)": (base + timedelta(minutes=5 * i)).strftime(TS_FORMAT),
-            header_glucose_col: 100.0 + i,
-            COL_SPLIT: "test",
+            "Timestamp (YYYY-MM-DDThh:mm:ss)": (
+                base + timedelta(minutes=5 * index)
+            ).strftime(TS_FORMAT),
+            header_glucose_col: 100.0 + index,
+            COL_SPLIT: split,
             COL_GROUP: "T1DM",
             "Event Type": "EGV",
+            **({"Heart Rate": 70.0 + index} if include_hr else {}),
+            **({"Step Count": float(index)} if include_steps else {}),
         }
-        if include_hr:
-            row["Heart Rate"] = 70.0 + i
-        if include_steps:
-            row["Step Count"] = float(i)
-        rows.append(row)
-    pl.DataFrame(rows).write_csv(path)
+        for index, split in enumerate(row_splits)
+    ).write_csv(path)
 
 
 def _load(csv_path: Path, **overrides) -> pl.DataFrame:
@@ -93,46 +107,37 @@ def test_load_csv_flexible_alias_resolution_picks_right_header(tmp_path: Path) -
 
 def test_load_csv_flexible_eval_split_filters_rows(tmp_path: Path) -> None:
     csv_path = tmp_path / "mixed_split.csv"
-    base = datetime(2020, 1, 1)
-    rows = []
-    for i in range(6):
-        rows.append(
-            {
-                COL_SEQ: "a",
-                COL_USER: "u1",
-                "Timestamp (YYYY-MM-DDThh:mm:ss)": (base + timedelta(minutes=5 * i)).strftime(TS_FORMAT),
-                "Glucose Value (mg/dL)": 100.0 + i,
-                COL_SPLIT: "train" if i < 3 else "test",
-                COL_GROUP: "T1DM",
-                "Event Type": "EGV",
-                "Heart Rate": 70.0,
-                "Step Count": 1.0,
-            }
-        )
-    pl.DataFrame(rows).write_csv(csv_path)
+    _write_csv(
+        csv_path,
+        "Glucose Value (mg/dL)",
+        include_hr=True,
+        include_steps=True,
+        splits=["train"] * 3 + ["test"] * 3,
+    )
     df = _load(csv_path, eval_split="test")
     assert len(df) == 3
-
-
-# ---------------------------------------------------------------------------
-# _run_evaluate
-# ---------------------------------------------------------------------------
 
 
 def test_run_evaluate_prediction_count_and_finiteness() -> None:
     torch.manual_seed(0)
     model = GluMindModel(
-        n_time_steps=8, n_features=3, d_model=8, n_heads=2, ff_units=16,
-        n_blocks=1, prediction_horizon=2, dropout=0.0,
+        n_time_steps=TINY_INPUT_STEPS,
+        n_features=3,
+        d_model=TINY_D_MODEL,
+        n_heads=TINY_N_HEADS,
+        ff_units=TINY_FF_UNITS,
+        n_blocks=TINY_N_BLOCKS,
+        prediction_horizon=TINY_HORIZON,
+        dropout=0.0,
     )
     n_windows = 13
-    x = torch.randn(n_windows, 8, 3)
-    y = torch.randn(n_windows, 2)
+    x = torch.randn(n_windows, TINY_INPUT_STEPS, 3)
+    y = torch.randn(n_windows, TINY_HORIZON)
     loader = DataLoader(TensorDataset(x, y), batch_size=4, shuffle=False)
 
     true_arr, pred_arr = _run_evaluate(model, loader, "cpu", n_windows=n_windows, log_interval_s=9999.0)
 
-    assert true_arr.shape == (n_windows, 2)
-    assert pred_arr.shape == (n_windows, 2)
+    assert true_arr.shape == (n_windows, TINY_HORIZON)
+    assert pred_arr.shape == (n_windows, TINY_HORIZON)
     assert np.isfinite(true_arr).all()
     assert np.isfinite(pred_arr).all()

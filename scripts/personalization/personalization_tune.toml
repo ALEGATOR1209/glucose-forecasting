@@ -1,0 +1,38 @@
+# Personalization fine-tune — Livia hyperparameter grid (Step 2).
+# Run:
+#   uv run tune-personal
+#   uv run tune-personal --dry-run
+#   uv run tune-personal --list
+#
+# Outputs in output_dir:
+#   state.json       — every tried combo + status
+#   leaderboard.csv  — sorted by ft_test_mae
+
+[paths]
+base_run_dir = "test_model_sugar_one"
+personal_csv = "data/personalization/prepared/livia_chronological.csv"
+output_dir = "data/output/runs/personalization/livia/tune"
+
+[defaults]
+subject = "livia"
+lwf_lambda = 0.3
+lr = 0.0004
+weight_decay = 0.00003
+epochs = 30
+patience = 3
+val_every_n_epochs = 2
+batch_size = 256
+train_window_stride = 6
+seed = 43
+device = "cuda"
+precision = "bf16"
+num_workers = -1
+eval_zero_shot = true
+
+[tune]
+skip_completed = true
+
+# Step-2 grid: LwF × LR (12 combos). weight_decay fixed at default (3e-5).
+[grid]
+lwf_lambda = [0.05, 0.1, 0.15]
+lr = [0.0002, 0.0004, 0.0008]

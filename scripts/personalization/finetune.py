@@ -31,7 +31,9 @@ from scripts.personalization.constants import (
     DEFAULT_FT_PATIENCE,
     DEFAULT_PROGRESS_LOG_INTERVAL_S,
     DEFAULT_SEED,
+    DEFAULT_TRAIN_WINDOW_STRIDE,
     DEFAULT_VAL_EVERY_N_EPOCHS,
+    DENSE_WINDOW_STRIDE,
     SUGAR_ONE_VALUE_COLUMNS,
 )
 from scripts.personalization.registry import build_model_from_meta, load_base_checkpoint
@@ -39,6 +41,7 @@ from scripts.sugar_one.train_sugar_one import (
     SugarOneWindowDataset,
     evaluate,
     impute_and_sort,
+    load_full_checkpoint,
     load_splits_streaming,
     make_optimizer_and_scheduler,
     train_loop,
@@ -90,6 +93,16 @@ def _dataloader_kwargs(num_workers: int, device: torch.device, prefetch_factor: 
 
 def _metrics_dict(mae: float, rmse: float, mard: float) -> dict[str, float]:
     return {"mae": float(mae), "rmse": float(rmse), "mard": float(mard)}
+
+
+def _load_saved_run_config(run_dir: Path) -> dict[str, Any]:
+    for fname in ("config.json", "tuning_meta.json"):
+        path = run_dir / fname
+        if path.is_file():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+    raise ValueError(f"no config.json or tuning_meta.json in {run_dir}")
 
 
 def _compute_quiet_metrics(
@@ -195,19 +208,55 @@ def run_finetune(
     val_every_n_epochs: int | None = None,
     progress_log_interval_s: float = DEFAULT_PROGRESS_LOG_INTERVAL_S,
     batch_size: int = 256,
-    train_window_stride: int = 1,
+    train_window_stride: int = DEFAULT_TRAIN_WINDOW_STRIDE,
     seed: int = DEFAULT_SEED,
     device: str = "cpu",
     precision: str = "fp32",
     num_workers: int = 0,
     eval_zero_shot: bool = True,
     from_scratch: bool = False,
+    resume_from: Path | None = None,
 ) -> tuple[Path, dict[str, Any]]:
     """Fine-tune on personal train split; return ``(run_dir, results)``."""
     init_cli_console()
+    resume_path = Path(resume_from).resolve() if resume_from is not None else None
+    if resume_path is not None and not resume_path.is_file():
+        raise ValueError(f"resume checkpoint not found: {resume_path}")
+
     base_run_dir = Path(base_run_dir)
     personal_csv = Path(personal_csv)
     out_dir = Path(out_dir)
+    saved_cfg: dict[str, Any] | None = None
+    prior_wall_time_s = 0.0
+    if resume_path is not None:
+        run_dir = resume_path.parent
+        saved_cfg = _load_saved_run_config(run_dir)
+        prior_wall_time_s = float(saved_cfg.get("wall_time_s", 0) or 0)
+        base_run_dir = Path(saved_cfg.get("base_run_dir", base_run_dir))
+        personal_csv = Path(saved_cfg.get("personal_csv", personal_csv))
+        lwf_lambda = float(saved_cfg.get("lwf_lambda", lwf_lambda))
+        epochs = int(saved_cfg.get("epochs", epochs))
+        lr = float(saved_cfg["lr"]) if saved_cfg.get("lr") is not None else lr
+        weight_decay = (
+            float(saved_cfg["weight_decay"])
+            if saved_cfg.get("weight_decay") is not None
+            else weight_decay
+        )
+        patience = int(saved_cfg["patience"]) if saved_cfg.get("patience") is not None else patience
+        val_every_n_epochs = (
+            int(saved_cfg["val_every_n_epochs"])
+            if saved_cfg.get("val_every_n_epochs") is not None
+            else val_every_n_epochs
+        )
+        batch_size = int(saved_cfg.get("batch_size", batch_size))
+        train_window_stride = int(saved_cfg.get("train_window_stride", train_window_stride))
+        seed = int(saved_cfg.get("seed", seed))
+        device = str(saved_cfg.get("device", device))
+        precision = str(saved_cfg.get("precision", precision))
+        num_workers = int(saved_cfg.get("num_workers", num_workers))
+        personal_days = saved_cfg.get("personal_days", personal_days)
+        from_scratch = bool(saved_cfg.get("from_scratch", from_scratch))
+        eval_zero_shot = False
 
     if not base_run_dir.exists():
         raise ValueError(f"base run dir not found: {base_run_dir}")
@@ -279,12 +328,15 @@ def run_finetune(
     if personal_train_ds is None or len(personal_train_ds) == 0:
         raise ValueError("no personal train windows (check days / input_steps)")
 
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    resolved_run_name = run_name or (
-        f"ft_{resolved_type}_d{personal_days or 'all'}_lwf{lwf_lambda:g}_{stamp}"
-    )
-    run_dir = out_dir / resolved_run_name
-    run_dir.mkdir(parents=True, exist_ok=True)
+    if resume_path is None:
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        resolved_run_name = run_name or (
+            f"ft_{resolved_type}_d{personal_days or 'all'}_lwf{lwf_lambda:g}_{stamp}"
+        )
+        run_dir = out_dir / resolved_run_name
+        run_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        safe_echo(f"Resuming from {resume_path}")
 
     cfg: dict[str, Any] = {
         "personalization": True,
@@ -323,11 +375,16 @@ def run_finetune(
         "batch_log_every": 0,
         "eval_batch_log_every": 0,
         "log_interval_s": progress_log_interval_s,
-        "resume_from": "",
+        "eval_zero_shot": eval_zero_shot,
+        "resume_from": str(resume_path) if resume_path is not None else "",
         "train_windows": len(personal_train_ds),
         "val_windows": len(personal_val_ds) if personal_val_ds else 0,
         "test_windows": len(personal_test_ds) if personal_test_ds else 0,
-        "start_time": datetime.now().isoformat(),
+        "start_time": (
+            str(saved_cfg.get("start_time"))
+            if saved_cfg is not None and saved_cfg.get("start_time")
+            else datetime.now().isoformat()
+        ),
     }
     with (run_dir / "tuning_meta.json").open("w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)
@@ -389,8 +446,32 @@ def run_finetune(
         "cuda", enabled=(torch_device.type == "cuda" and precision == "fp16")
     )
 
+    start_epoch = 1
+    best_val_loss = float("inf")
+    start_wait = 0
+    start_best_epoch = 0
+    if resume_path is not None:
+        last_done, best_val_loss, start_wait, start_best_epoch = load_full_checkpoint(
+            resume_path,
+            model,
+            optimizer,
+            scheduler,
+            torch_device,
+        )
+        start_epoch = last_done + 1
+        if start_epoch > epochs:
+            safe_echo(
+                f"Checkpoint already at epoch {last_done} >= max {epochs}; "
+                "skipping training loop."
+            )
+            start_epoch = epochs + 1
+
     lwf_note = f" | lwf={lwf_lambda}" if teacher is not None else ""
-    stride_note = f" | train_stride={train_window_stride}" if train_window_stride != 1 else ""
+    stride_note = (
+        f" | train_stride={train_window_stride}"
+        if train_window_stride != DENSE_WINDOW_STRIDE
+        else ""
+    )
     safe_echo(
         f"Fine-tuning: train={len(personal_train_ds):,} val={len(personal_val_ds) if personal_val_ds else 0:,} "
         f"test={len(personal_test_ds) if personal_test_ds else 0:,} | days={personal_days or 'all'} | "
@@ -418,6 +499,10 @@ def run_finetune(
         scaler=grad_scaler,
         val_every_n_epochs=resolved_val_every,
         log_interval_s=progress_log_interval_s,
+        start_epoch=start_epoch,
+        best_val_loss=best_val_loss,
+        start_wait=start_wait,
+        start_best_epoch=start_best_epoch,
     )
 
     results["finetuned_val"] = _eval_split(
@@ -429,7 +514,7 @@ def run_finetune(
         run_dir, "test", use_amp, amp_dtype,
     )
 
-    wall_time_s = time.perf_counter() - t_run_start
+    wall_time_s = prior_wall_time_s + (time.perf_counter() - t_run_start)
     results["wall_time_s"] = wall_time_s
     cfg["wall_time_s"] = wall_time_s
     cfg["end_time"] = datetime.now().isoformat()
@@ -458,7 +543,7 @@ def main(
         "--base-run-dir",
     ),
     personal_csv: Path = typer.Option(..., "--personal-csv"),
-    out_dir: Path = typer.Option(Path("runs/personalization"), "--out-dir"),
+    out_dir: Path = typer.Option(Path("data/output/runs/personalization"), "--out-dir"),
     run_name: Optional[str] = typer.Option(None, "--run-name"),
     personal_days: Optional[int] = typer.Option(
         None,
@@ -482,9 +567,9 @@ def main(
     ),
     batch_size: int = typer.Option(256, "--batch-size"),
     train_window_stride: int = typer.Option(
-        1,
+        DEFAULT_TRAIN_WINDOW_STRIDE,
         "--train-window-stride",
-        help="Sliding-window start stride for train split only (6 = 30 min at 5-min sampling).",
+        help="Sliding-window start stride for train split only (default: 6 = 30 min at 5-min sampling).",
     ),
     seed: int = typer.Option(DEFAULT_SEED, "--seed"),
     device: str = typer.Option("cpu", "--device"),
@@ -492,6 +577,11 @@ def main(
     num_workers: int = typer.Option(-1, "--num-workers", help="DataLoader workers (-1 = auto)."),
     eval_zero_shot: bool = typer.Option(True, "--eval-zero-shot/--no-eval-zero-shot"),
     from_scratch: bool = typer.Option(False, "--from-scratch/--no-from-scratch"),
+    resume_from: Optional[Path] = typer.Option(
+        None,
+        "--resume-from",
+        help="Resume from last_checkpoint.pt (reuses run dir, skips zero-shot).",
+    ),
 ) -> None:
     """Fine-tune a global checkpoint on one person's chronological splits."""
     init_cli_console()
@@ -517,6 +607,7 @@ def main(
             num_workers=num_workers,
             eval_zero_shot=eval_zero_shot,
             from_scratch=from_scratch,
+            resume_from=resume_from,
         )
     except ValueError as exc:
         safe_echo(f"Error: {exc}", err=True)

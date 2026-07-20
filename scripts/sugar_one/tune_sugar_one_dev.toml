@@ -8,8 +8,8 @@
 # on 6 GB VRAM — it thrashes (~0.05 batch/s, ~48 min/epoch vs ~2 min/epoch).
 
 [paths]
-csv = "data/loop_and_ai_ready/loop_ai_ready_joined2_dev.csv"
-output_dir = "runs/sugar_one_tune/explore_dev2"
+csv = "data/input/loop_ai_ready_joined2_dev.csv"
+output_dir = "data/output/runs/sugar_one_tune/explore_dev2"
 
 [dataset]
 unique_id = "sequence_id"

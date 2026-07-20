@@ -25,7 +25,7 @@ import tomllib
 import torch
 import typer
 
-from scripts.sugar_one import train_sugar_one as tg
+from glucose_forecasting.training import sugar_one as tg
 from scripts.sugar_one.console_log import echo_plain
 
 app = typer.Typer(

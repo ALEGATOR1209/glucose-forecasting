@@ -104,29 +104,29 @@ uv run prepare-personal-csv livia \
 uv run sweep-personal-hyperparams \
   --base-run-dir test_model_sugar_one \
   --personal-csv data/personalization/prepared/livia_chronological.csv \
-  --out-dir runs/personalization/livia/sweeps/hyperparams \
+  --out-dir data/output/runs/personalization/livia/sweeps/hyperparams \
   --device cuda
 
 # Step 3 — Days curve (uses best_recipe.json)
 uv run sweep-personal-data-size \
   --base-run-dir test_model_sugar_one \
   --personal-csv data/personalization/prepared/livia_chronological.csv \
-  --recipe-json runs/personalization/livia/sweeps/hyperparams/best_recipe.json \
-  --out-dir runs/personalization/livia/sweeps/data_size \
+  --recipe-json data/output/runs/personalization/livia/sweeps/hyperparams/best_recipe.json \
+  --out-dir data/output/runs/personalization/livia/sweeps/data_size \
   --device cuda
 
 # Step 4 — Holdouts
 uv run validate-personal-holdouts \
   --base-run-dir test_model_sugar_one \
-  --recipe-json runs/personalization/livia/sweeps/hyperparams/best_recipe.json \
-  --livia-data-size-summary runs/personalization/livia/sweeps/data_size/summary.csv \
+  --recipe-json data/output/runs/personalization/livia/sweeps/hyperparams/best_recipe.json \
+  --livia-data-size-summary data/output/runs/personalization/livia/sweeps/data_size/summary.csv \
   --loop-csv data/loop_and_ai_ready/loop.csv \
-  --out-dir runs/personalization/holdout_validation \
+  --out-dir data/output/runs/personalization/holdout_validation \
   --device cuda
 
 # Step 5 — Aggregate
 uv run aggregate-personal-results \
-  --root runs/personalization \
+  --root data/output/runs/personalization \
   --out docs/reports/milestone8_personalization_summary.json
 ```
 
@@ -166,7 +166,7 @@ Training on every window is redundant.
 uv run finetune-personal \
   --base-run-dir test_model_sugar_one \
   --personal-csv data/personalization/prepared/livia_chronological.csv \
-  --out-dir runs/personalization/livia/window_stride_compare \
+  --out-dir data/output/runs/personalization/livia/window_stride_compare \
   --run-name sparse_stride6 \
   --train-window-stride 6 \
   --lwf-lambda 0.3 --lr 0.0004 --weight-decay 0.00003 \
@@ -181,7 +181,7 @@ uv run finetune-personal \
 # Or both in one command:
 uv run compare-personal-window-stride \
   --personal-csv data/personalization/prepared/livia_chronological.csv \
-  --out-dir runs/personalization/livia/window_stride_compare \
+  --out-dir data/output/runs/personalization/livia/window_stride_compare \
   --device cuda --precision bf16 \
   --run-sparse --no-run-dense
 ```

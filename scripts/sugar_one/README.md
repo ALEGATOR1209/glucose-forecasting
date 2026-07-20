@@ -9,30 +9,32 @@ It loads a trained checkpoint, fits MinMax scalers on training rows, runs slidin
 | **GluMind** | glucose, heart rate, steps | `ai_ready` wearable export |
 | **SugarOne** | glucose, basal, bolus, carbs | loop / pump export (`loop_ai_ready_joined2.csv`) |
 
+SugarOne was formerly named **GluMindIC**. ML-ready CSVs come from [glucose_data_processing](https://github.com/GlucoseDAO/glucose_data_processing); local layout: [docs/DATA.md](../../docs/DATA.md).
+
 ---
 
 ## Quick start
 
-From the repository root (after `uv sync`):
+From the repository root (after `uv sync`). Paths below use `data/input/`; symlink or adjust if your files live under `data/loop_and_ai_ready/`.
 
 ```bash
 # Inspect covariates in a CSV (no model required)
 uv run evaluate-model \
-  --test-csv data/loop_and_ai_ready/ablation_test.csv \
+  --test-csv data/input/ablation_test.csv \
   --covariates \
   --model-type sugar_one
 
 # Evaluate SugarOne on the loop benchmark test split
 uv run evaluate-model \
-  --run-dir runs/sugar_one_tune/production/trial_0000_bcd3813f \
+  --run-dir data/output/runs/sugar_one_tune/production/trial_0000_bcd3813f \
   --model-type sugar_one \
-  --test-csv data/loop_and_ai_ready/loop_ai_ready_joined2.csv \
-  --train-csv data/loop_and_ai_ready/loop_ai_ready_joined2.csv \
+  --test-csv data/input/loop_ai_ready_joined2.csv \
+  --train-csv data/input/loop_ai_ready_joined2.csv \
   --batch-size 256 \
-  --output-json runs/comparison_loop/sugar_one_trial0.json
+  --output-json data/output/runs/comparison_loop/sugar_one_trial0.json
 ```
 
-Bundled reviewer checkpoints:
+Bundled reviewer checkpoints (demo CSV; add `--test-split ''`):
 
 ```bash
 uv run evaluate-model \
@@ -40,7 +42,7 @@ uv run evaluate-model \
   --model-type sugar_one \
   --test-csv test_data/livia_sugar_one_ready.csv \
   --train-csv test_data/livia_sugar_one_ready.csv \
-  --zero-cov
+  --test-split ''
 ```
 
 ---
@@ -87,7 +89,7 @@ Print which covariate columns exist in `--test-csv`, how many rows have non-empt
 
 ```bash
 uv run evaluate-model \
-  --test-csv data/loop_and_ai_ready/ablation_test.csv \
+  --test-csv data/input/ablation_test.csv \
   --covariates \
   --model-type sugar_one
 ```
@@ -147,17 +149,17 @@ uv run evaluate-model ... --exclude-cov carbs
 uv run evaluate-model ... --include-cov basal
 ```
 
-Typical T1DM ablation workflow on `data/loop_and_ai_ready/ablation_test.csv`:
+Typical T1DM ablation workflow on `data/input/ablation_test.csv`:
 
 ```bash
 uv run evaluate-model \
-  --run-dir runs/sugar_one_tune/production/trial_0000_bcd3813f \
+  --run-dir data/output/runs/sugar_one_tune/production/trial_0000_bcd3813f \
   --model-type sugar_one \
-  --test-csv data/loop_and_ai_ready/ablation_test.csv \
-  --train-csv data/loop_and_ai_ready/loop_ai_ready_joined2.csv \
+  --test-csv data/input/ablation_test.csv \
+  --train-csv data/input/loop_ai_ready_joined2.csv \
   --test-split '' \
   --include-cov basal \
-  --output-json runs/ablation/basal_only.json
+  --output-json data/output/runs/ablation/basal_only.json
 ```
 
 Repeat with `--include-cov bolus`, `--include-cov carbs`, `--include-cov basal,bolus`, etc., and compare JSON outputs.

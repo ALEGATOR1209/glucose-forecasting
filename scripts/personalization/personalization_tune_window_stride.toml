@@ -1,0 +1,36 @@
+# Window-stride hypothesis: sparse (stride=6) vs dense (stride=1).
+# Run:
+#   uv run tune-personal -c scripts/personalization/personalization_tune_window_stride.toml
+#
+# Uses explicit [[runs]] so you control exactly which variants to try.
+
+[paths]
+base_run_dir = "test_model_sugar_one"
+personal_csv = "data/personalization/prepared/livia_chronological.csv"
+output_dir = "data/output/runs/personalization/livia/window_stride_compare"
+
+[defaults]
+lwf_lambda = 0.3
+lr = 0.0004
+weight_decay = 0.00003
+epochs = 30
+patience = 3
+val_every_n_epochs = 2
+batch_size = 256
+train_window_stride = 6
+seed = 43
+device = "cuda"
+precision = "bf16"
+num_workers = -1
+eval_zero_shot = true
+
+[tune]
+skip_completed = true
+
+[[runs]]
+name = "sparse_stride6"
+train_window_stride = 6
+
+[[runs]]
+name = "dense_stride1"
+train_window_stride = 1

@@ -20,11 +20,11 @@
 # train_sugar_jepa.py; there is no CLI that reads it directly yet.
 #
 # Run (pass these values on the command line — see scripts/sugar_jepa/README.md):
-#   uv run python scripts/sugar_jepa/train_sugar_jepa.py --csv data/loop_and_ai_ready/loop_ai_ready_joined2_dev.csv ...
+#   uv run python scripts/sugar_jepa/train_sugar_jepa.py --csv data/input/loop_ai_ready_joined2_dev.csv ...
 
 [paths]
-csv = "data/loop_and_ai_ready/loop_ai_ready_joined2_dev.csv"
-output_dir = "runs/sugar_jepa"
+csv = "data/input/loop_ai_ready_joined2_dev.csv"
+output_dir = "data/output/runs/sugar_jepa"
 
 [dataset]
 unique_id = "sequence_id"

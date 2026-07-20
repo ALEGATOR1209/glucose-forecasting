@@ -4,7 +4,7 @@
 - Lower is better for MAE / RMSE / MARD.
 - For tuning-only splits where test is unavailable, `val_as_test` is used.
 - Date generated: 2026-02-27.
-- `GluMind (our)` in this document refers to **our architecture** (the proposed model under evaluation).
+- `GluMind (our)` / **GluMind (Ours)** in this document is the wearable multimodal model in `scripts/glumind/` (glucose + HR + steps). It is **not** SugarOne. The insulin/carb model formerly called GluMindIC is **SugarOne** — see `docs/MILESTONES.md` and `docs/GLUMIND_VS_SUGARONE_COMPARISON.md`.
 
 ## Input Files Reviewed
 

@@ -75,7 +75,7 @@ def parse_args():
     ap.add_argument("--mask_interpolated_targets", action="store_true",
                     help="Exclude interpolated target rows from metrics.")
 
-    ap.add_argument("--out_dir", type=Path, default=Path("runs"))
+    ap.add_argument("--out_dir", type=Path, default=Path("data/output/runs"))
     ap.add_argument("--save_predictions", action="store_true")
     return ap.parse_args()
 

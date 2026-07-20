@@ -65,7 +65,7 @@ def main(
     ),
     personal_csv: Path = typer.Option(..., "--personal-csv"),
     out_dir: Path = typer.Option(
-        Path("runs/personalization/livia/window_stride_compare"),
+        Path("data/output/runs/personalization/livia/window_stride_compare"),
         "--out-dir",
     ),
     sparse_stride: int = typer.Option(

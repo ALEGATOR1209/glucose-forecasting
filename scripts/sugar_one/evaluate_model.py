@@ -23,13 +23,17 @@ Model resolution (same as evaluate_glumind.py):
 
 Examples:
   uv run evaluate-model \\
-      --run-dir test_model \\
-      --test-csv data/actual/with_complex_steps_processing/ai_ready_plus_type1_v1_val_in_val_and_test.csv
+      --run-dir test_model_sugar_one \\
+      --model-type sugar_one \\
+      --test-csv test_data/livia_sugar_one_ready.csv \\
+      --train-csv test_data/livia_sugar_one_ready.csv \\
+      --test-split ''
 
   uv run evaluate-model \\
-      --run-dir runs/sugar_one_tune/production/trial_0 \\
+      --run-dir test_model_sugar_one \\
       --model-type sugar_one \\
-      --test-csv data/loop_and_ai_ready/loop_ai_ready_joined2.csv
+      --test-csv data/input/loop_ai_ready_joined2.csv \\
+      --train-csv data/input/loop_ai_ready_joined2.csv
 """
 from __future__ import annotations
 
@@ -51,8 +55,7 @@ import torch.nn as nn
 import typer
 from torch.utils.data import DataLoader
 
-from scripts.glumind.glumind_model import GluMindModel
-from scripts.glumind.train_glumind import (
+from glucose_forecasting.data.glumind import (
     COL_GROUP,
     COL_SEQ,
     COL_SPLIT,
@@ -63,16 +66,19 @@ from scripts.glumind.train_glumind import (
     apply_split_scheme as apply_split_scheme_glumind,
     impute_and_sort as impute_and_sort_glumind,
     load_splits_streaming as load_splits_glumind,
-    mae_rmse_mard,
 )
-from scripts.sugar_one.sugar_one_model import SugarOneModel
-from scripts.sugar_one.train_sugar_one import (
+from glucose_forecasting.data.sugar_one import (
     COL_TS as IC_COL_TS,
     SugarOneWindowDataset,
     apply_split_scheme as apply_split_scheme_ic,
     impute_and_sort as impute_and_sort_ic,
     load_splits_streaming as load_splits_ic,
 )
+from glucose_forecasting.models.glumind import GluMindModel
+from glucose_forecasting.training.glumind import (
+    mae_rmse_mard,
+)
+from scripts.sugar_one.sugar_one_model import SugarOneModel
 from scripts.common.checkpoint import strip_compile_prefix
 from scripts.common.registry import (
     find_best_run_dir as _common_find_best_run_dir,
@@ -617,6 +623,13 @@ def main(
 
     if eval_df.is_empty():
         typer.echo("Error: Evaluation dataframe is empty after loading/filtering.", err=True)
+        if eval_split is not None:
+            typer.echo(
+                f"Hint: no rows have Recommended Split == {eval_split!r}. "
+                "Demo CSVs under test_data/ use an empty split — pass --test-split '' "
+                "to score all rows.",
+                err=True,
+            )
         raise typer.Exit(1)
 
     eval_ds = _build_eval_dataset(eval_df, train_ds, resolved_kind, meta)

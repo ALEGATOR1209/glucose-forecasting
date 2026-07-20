@@ -53,7 +53,7 @@ def main(
     ),
     personal_csv: Path = typer.Option(..., "--personal-csv"),
     out_dir: Path = typer.Option(
-        Path("runs/personalization/livia/sweeps/data_size"),
+        Path("data/output/runs/personalization/livia/sweeps/data_size"),
         "--out-dir",
     ),
     recipe_json: Path = typer.Option(

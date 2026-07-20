@@ -48,6 +48,7 @@ DEFAULT_PROGRESS_LOG_INTERVAL_S: Final[float] = 10.0
 # Sliding-window stride for train windows (5-min CGM steps).
 DENSE_WINDOW_STRIDE: Final[int] = 1
 SPARSE_WINDOW_STRIDE: Final[int] = 6  # 6×5 min = 30 min between window starts
+DEFAULT_TRAIN_WINDOW_STRIDE: Final[int] = SPARSE_WINDOW_STRIDE
 
 DEFAULT_SEED: Final[int] = 43
 DEFAULT_HORIZON: Final[int] = 12

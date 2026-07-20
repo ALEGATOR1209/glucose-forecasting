@@ -1,27 +1,20 @@
 #!/usr/bin/env python3
 """
-SugarJepa — SugarOne + our own JEPA glucose encoder as an extra stream.
+SugarJepa — SugarOne + a pretrained CGM-JEPA glucose embedding as a 4th
+cross-attention auxiliary stream. See scripts/sugar_jepa/sugar_jepa_model.py
+and scripts/sugar_jepa/README.md.
 
-This module is deliberately thin. `SugarJepaModel2` takes the *same* contract as
-SugarOne — `forward(x)` with `x: (batch, input_steps, 4)`, one window, one
-lookback — so everything except the model itself is identical to SugarOne and is
-imported from `scripts/sugar_one/train_sugar_one.py` rather than copied:
+Dataset: data/input/loop_ai_ready_joined2_dev.csv (or the full
+loop_ai_ready_joined2.csv).
 
-  data loading  · split scheme · imputation · SugarOneWindowDataset
-  train_one_epoch · evaluate · metrics · checkpointing · train_loop
+Proof-of-concept scope: `global` mode only (one model, all study groups) —
+per_group / cohort_wise / continual (LwF) from train_sugar_one.py are not
+implemented here.
 
-Only the three model-facing pieces are re-implemented here:
-
-  make_model()                   builds SugarJepaModel2 (+ optional --jepa-init)
-  make_optimizer_and_scheduler() two param groups — the JEPA encoder trains at
-                                 its own smaller --jepa-lr, and is NEVER frozen
-  run_train_and_eval()           same as SugarOne's, wired to the above
-
-The JEPA branch reads its glucose from `x[..., 0]` inside the model, so there is
-no second tensor, no second scaler, and no separate `jepa_window`: every series
-long enough for SugarOne is long enough for SugarJepa.
-
-Scope: `global` mode only, as before.
+Imputation policy (identical to SugarOne):
+  - Basal Rate: forward-fill then back-fill, then fill_null(0.0).
+  - Bolus Insulin / Carbohydrates: fill_null(0.0) directly (discrete events).
+  - Glucose: forward-fill then back-fill then fill_null(0.0).
 """
 from __future__ import annotations
 
@@ -384,7 +377,7 @@ def main(
     jepa_init: str = typer.Option("", help="Path to a self-supervised encoder.pt (empty = random init)."),
     device_name: str = typer.Option("cuda", "--device", help="cpu | mps | cuda."),
     seed: int = typer.Option(42, help="Random seed."),
-    out_dir: Path = typer.Option(Path("runs/sugar_jepa"), help="Output directory."),
+    out_dir: Path = typer.Option(Path("data/output/runs/sugar_jepa"), help="Output directory."),
 ) -> None:
     """Train SugarJepa (global mode only) — SugarOne + our own JEPA glucose encoder."""
     # Fail before the (slow) CSV load rather than at model construction.

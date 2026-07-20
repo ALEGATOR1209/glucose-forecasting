@@ -53,7 +53,7 @@ def main(
     ),
     personal_csv: Path = typer.Option(..., "--personal-csv"),
     out_dir: Path = typer.Option(
-        Path("runs/personalization/livia/sweeps/hyperparams"),
+        Path("data/output/runs/personalization/livia/sweeps/hyperparams"),
         "--out-dir",
     ),
     lwf_lambdas: Optional[str] = typer.Option(

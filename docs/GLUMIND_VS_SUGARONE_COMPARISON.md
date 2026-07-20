@@ -2,7 +2,9 @@
 
 **Date:** 2026-06-06 (updated with `test_data` demo evaluation)  
 **Evaluation script:** `scripts/sugar_one/evaluate_model.py` (`uv run evaluate-model`)  
-**Primary benchmark:** `data/loop_and_ai_ready/loop_ai_ready_joined2.csv` (test split)  
+**Primary benchmark:** `loop_ai_ready_joined2.csv` (test split) — place under `data/input/` (or the historical `data/loop_and_ai_ready/` path); see [DATA.md](DATA.md).
+
+> **Naming:** SugarOne was called **GluMindIC** in early Milestone 07 drafts. BGI “GluMind (Ours)” refers to wearable **GluMind**, not SugarOne.  
 **Demo / sanity check:** `test_data/livia_sugar_one_ready.csv` (all models; bundled reviewer checkpoints)
 
 ## Datasets and terminology
@@ -93,7 +95,7 @@ Best trial from production hyperparameter search (`leaderboard.csv`, combo hash 
 | Validation (in-domain, joined2) | 12.69 | 19.73 | 9.64% |
 | Test (in-domain, joined2, from training run) | 12.41 | 19.05 | 9.90% |
 
-**Architecture / training:** global mode, `input_steps=128`, `horizon=12`, `d_model=32`, `n_heads=8`, `n_blocks=5`, trained on `data/loop_and_ai_ready/loop_ai_ready_joined2.csv` (full **`ai_ready`** + **`loop`** join).
+**Architecture / training:** global mode, `input_steps=128`, `horizon=12`, `d_model=32`, `n_heads=8`, `n_blocks=5`, trained on `data/input/loop_ai_ready_joined2.csv` (full **`ai_ready`** + **`loop`** join).
 
 Re-evaluated test metrics (12.40 / 19.03 / 9.91%) match the saved training-run test metrics within rounding, confirming reproducibility.
 
@@ -106,7 +108,7 @@ Both models were evaluated on the **same `loop_ai_ready_joined2` test split** us
 uv run evaluate-model \
   --run-dir marked_runs/glumind/ai_ready_plus_type1/glumind_global_h12_20260226_032703 \
   --model-type glumind \
-  --test-csv data/loop_and_ai_ready/loop_ai_ready_joined2.csv \
+  --test-csv data/input/loop_ai_ready_joined2.csv \
   --batch-size 4096 \
   --output-json runs/comparison_loop/glumind_global.json
 
@@ -114,8 +116,8 @@ uv run evaluate-model \
 uv run evaluate-model \
   --run-dir runs/sugar_one_tune/production/trial_0000_bcd3813f \
   --model-type sugar_one \
-  --test-csv data/loop_and_ai_ready/loop_ai_ready_joined2.csv \
-  --train-csv data/loop_and_ai_ready/loop_ai_ready_joined2.csv \
+  --test-csv data/input/loop_ai_ready_joined2.csv \
+  --train-csv data/input/loop_ai_ready_joined2.csv \
   --batch-size 256 \
   --output-json runs/comparison_loop/sugar_one_trial0.json
 
@@ -123,8 +125,8 @@ uv run evaluate-model \
 uv run evaluate-model \
   --run-dir runs/sugar_one_tune/production/trial_0000_bcd3813f \
   --model-type sugar_one \
-  --test-csv data/loop_and_ai_ready/loop_ai_ready_joined2.csv \
-  --train-csv data/loop_and_ai_ready/loop_ai_ready_joined2.csv \
+  --test-csv data/input/loop_ai_ready_joined2.csv \
+  --train-csv data/input/loop_ai_ready_joined2.csv \
   --batch-size 256 \
   --zero-cov \
   --output-json runs/comparison_loop/sugar_one_trial0_zero_cov.json
@@ -233,36 +235,36 @@ This is a **sanity check / proof-of-life** run, not a headline benchmark: Livia 
 | GluMind at inference | glucose + HR/steps (both missing → 0-filled, same as joined2 cross-domain eval) |
 | SugarOne at inference | glucose + basal/bolus (full cov), or glucose only (`--zero-cov`) |
 
-```powershell
+```bash
 # GluMind (bundled reviewer checkpoint; HR/steps absent → 0-filled)
-uv run evaluate-model `
-  --run-dir test_model_glumind `
-  --model-type glumind `
-  --test-csv test_data/livia_sugar_one_ready.csv `
-  --train-csv test_data/livia_sugar_one_ready.csv `
-  --test-split "" `
-  --batch-size 4096 `
+uv run evaluate-model \
+  --run-dir test_model_glumind \
+  --model-type glumind \
+  --test-csv test_data/livia_sugar_one_ready.csv \
+  --train-csv test_data/livia_sugar_one_ready.csv \
+  --test-split '' \
+  --batch-size 4096 \
   --output-json runs/comparison_test_data/glumind_test_model.json
 
 # SugarOne (bundled reviewer checkpoint, full covariate path — no --zero-cov)
-uv run evaluate-model `
-  --run-dir test_model_sugar_one `
-  --model-type sugar_one `
-  --test-csv test_data/livia_sugar_one_ready.csv `
-  --train-csv test_data/livia_sugar_one_ready.csv `
-  --test-split "" `
-  --batch-size 256 `
+uv run evaluate-model \
+  --run-dir test_model_sugar_one \
+  --model-type sugar_one \
+  --test-csv test_data/livia_sugar_one_ready.csv \
+  --train-csv test_data/livia_sugar_one_ready.csv \
+  --test-split '' \
+  --batch-size 256 \
   --output-json runs/comparison_test_data/sugar_one_test_model_full_cov.json
 
 # SugarOne (bundled reviewer checkpoint, glucose-only ablation via --zero-cov)
-uv run evaluate-model `
-  --run-dir test_model_sugar_one `
-  --model-type sugar_one `
-  --test-csv test_data/livia_sugar_one_ready.csv `
-  --train-csv test_data/livia_sugar_one_ready.csv `
-  --zero-cov `
-  --test-split "" `
-  --batch-size 256 `
+uv run evaluate-model \
+  --run-dir test_model_sugar_one \
+  --model-type sugar_one \
+  --test-csv test_data/livia_sugar_one_ready.csv \
+  --train-csv test_data/livia_sugar_one_ready.csv \
+  --zero-cov \
+  --test-split '' \
+  --batch-size 256 \
   --output-json runs/comparison_test_data/sugar_one_test_model.json
 ```
 

@@ -6,13 +6,21 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "asitop>=0.0.24",
+    "eliot>=1.17.5",
     "huggingface-hub>=0.30.0",
-    "neuralforecast>=3",
-    "numpy>=2.4.0",
+    "kaleido>=1.3.0",
+    "neuralforecast>=3.2.0",
+    "numpy>=2.5.1",
     "nvitop>=1.5.3",
     "pandas>=2.0",
+    "plotly>=6.9.0",
     "polars>=1.38.1",
     "pyarrow>=22.0.0",
+    "pycomfort>=0.0.18",
+    "pydantic>=2.12.5",
+    "pyyaml>=6.0.3",
+    "ray==2.56.1",
+    "safetensors>=0.7.0",
     "scikit-learn>=1.8.0",
     "scipy>=1.16.3",
     "torch>=2.9.1",
@@ -20,9 +28,11 @@ dependencies = [
     "truststore>=0.10.4",
     "typer>=0.15.0",
     "utilsforecast>=0.2.15",
+    "xlstm>=2.0.5",
 ]
 
 [project.scripts]
+glucose = "glucose_forecasting.cli:app"
 train-glumind = "scripts.glumind.train_glumind:main"
 tune-sugar-one = "scripts.sugar_one.tune_sugar_one:app"
 evaluate-glumind = "scripts.glumind.evaluate_glumind:app"
@@ -32,6 +42,7 @@ download-glumind-hf = "scripts.glumind.download_from_huggingface:app"
 prepare-personal-csv = "scripts.personalization.prepare_personal_csv:app"
 finetune-personal = "scripts.personalization.finetune:app"
 compare-personal-window-stride = "scripts.personalization.compare_window_stride:app"
+tune-personal = "scripts.personalization.sweep_hyperparams:app"
 sweep-personal-hyperparams = "scripts.personalization.sweep_hyperparams:app"
 sweep-personal-data-size = "scripts.personalization.sweep_data_size:app"
 validate-personal-holdouts = "scripts.personalization.validate_holdouts:app"
@@ -42,7 +53,10 @@ requires = ["hatchling>=1.26.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["scripts"]
+packages = ["src/glucose_forecasting", "scripts"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/glucose_forecasting/backends/neuralforecast/model_suites.yaml" = "glucose_forecasting/backends/neuralforecast/model_suites.yaml"
 
 # Use the OS TLS stack so PyPI/build deps resolve behind proxies or non-standard roots (Windows UnknownIssuer).
 [tool.uv]

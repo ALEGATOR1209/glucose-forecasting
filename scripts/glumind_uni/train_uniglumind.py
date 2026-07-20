@@ -857,7 +857,7 @@ def train(
     continual_val_scope: str = typer.Option("current_group", help="current_group | all_groups."),
     device_name: str = typer.Option("cuda", "--device", help="Device: cpu | mps | cuda."),
     seed: int = typer.Option(42, help="Random seed."),
-    out_dir: Path = typer.Option(Path("runs/glumind_uni"), help="Output directory."),
+    out_dir: Path = typer.Option(Path("data/output/runs/glumind_uni"), help="Output directory."),
 ) -> None:
     """Train GluMindUni on glucose-only data."""
     torch.manual_seed(seed)

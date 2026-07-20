@@ -1,0 +1,306 @@
+[andrii@atomica ~]$ uv run python scripts/GluMind/train_glumind.py \
+>   --csv data/actual/with_complex_steps_processing/ai_ready_plus_type1_v1_val_in_val_and_test.csv \
+>   --split_scheme classic \
+>   --mode global \
+>   --epochs 120 \
+>   --patience 20 \
+>   --device cuda \
+>   --batch_size 4096 \
+>   --precision bf16 \
+>   --compile_mode reduce-overhead \
+>   --num_workers -1 \
+>   --prefetch_factor 4 \
+>   --val_every_n_epochs 2 \
+>   --ckpt_every_n_epochs 10 \
+>   --log_every 1 \
+>   --seed 42 \
+>   --out_dir runs/glumind/ai_ready_plus_type1
+TF32 enabled.
+Device: cuda
+Loading train/val/test splits (streaming)...
+  ... loaded 6,000,000 rows
+Loaded: train=4,744,698 | val=1,046,265 | test=1,050,910
+After limits: train=4,744,698 | val=1,046,265 | test=1,050,910
+Study groups in train: ['Healthy', 'Insulin-T2DM', 'Oral-T2DM', 'Pre-T2DM', 'T1DM']
+
+=== MODE: GLOBAL ===
+  Note: Skipped 1487 series/segments shorter than 92 steps.
+  Note: Skipped 463 series/segments shorter than 92 steps.
+  Note: Skipped 289 series/segments shorter than 92 steps.
+Latest run symlink: runs/glumind/ai_ready_plus_type1/latest -> glumind_global_h12_20260226_032703
+--> Training global model (dir=runs/glumind/ai_ready_plus_type1/glumind_global_h12_20260226_032703)
+torch.compile enabled (mode=reduce-overhead)
+Run directory: runs/glumind/ai_ready_plus_type1/glumind_global_h12_20260226_032703
+Latest run symlink: runs/glumind/ai_ready_plus_type1/latest -> glumind_global_h12_20260226_032703
+
+============================================================
+Training: 4,450,964 windows | Val: 977,214 | Test: 984,256 | Params: 196,972
+============================================================
+  ★ New best at epoch 1 (val_loss=0.001914)
+  Epoch    1/120 | train_loss=0.006636 | val_loss=0.001914 | 94.8s/epoch | ETA: 3:08:06
+  Epoch    2/120 | train_loss=0.001947 | val_loss=0.002121 | 92.9s/epoch | ETA: 3:04:35
+  Epoch    3/120 | train_loss=0.001772 | val_loss=SKIP | 85.6s/epoch | ETA: 2:57:40
+  ★ New best at epoch 4 (val_loss=0.001909)
+  Epoch    4/120 | train_loss=0.001694 | val_loss=0.001909 | 92.0s/epoch | ETA: 2:56:35
+  Epoch    5/120 | train_loss=0.001621 | val_loss=SKIP | 85.5s/epoch | ETA: 2:52:50
+  ★ New best at epoch 6 (val_loss=0.001815)
+  Epoch    6/120 | train_loss=0.001561 | val_loss=0.001815 | 92.4s/epoch | ETA: 2:52:01
+  Epoch    7/120 | train_loss=0.001533 | val_loss=SKIP | 85.6s/epoch | ETA: 2:49:10
+  ★ New best at epoch 8 (val_loss=0.001646)
+  Epoch    8/120 | train_loss=0.001510 | val_loss=0.001646 | 92.5s/epoch | ETA: 2:48:18
+  Epoch    9/120 | train_loss=0.001497 | val_loss=SKIP | 86.0s/epoch | ETA: 2:45:57
+  ★ New best at epoch 10 (val_loss=0.001616)
+  Epoch   10/120 | train_loss=0.001487 | val_loss=0.001616 | 92.2s/epoch | ETA: 2:44:54
+  [Checkpoint] Saved at epoch 10 → runs/glumind/ai_ready_plus_type1/glumind_global_h12_20260226_032703/checkpoints/epoch_0010
+
+=== VAL_EPOCH0010 METRICS (overall, mg/dL) ===
+  MAE : 11.5463
+  RMSE: 18.2404
+  MARD: 8.40%
+
+=== VAL_EPOCH0010 METRICS (by Study Group) ===
+ study_group  n_windows       mae      rmse      mard
+     Healthy     225293  9.521751 14.777360  8.018591
+    Pre-T2DM     229895 10.108880 15.901828  8.140705
+   Oral-T2DM     270933 11.701526 18.203108  7.979340
+Insulin-T2DM     144586 13.993245 21.586140  8.135528
+        T1DM     106507 15.215010 23.863861 11.159936
+
+=== TEST_EPOCH0010 METRICS (overall, mg/dL) ===
+  MAE : 11.8296
+  RMSE: 18.8607
+  MARD: 8.46%
+
+=== TEST_EPOCH0010 METRICS (by Study Group) ===
+ study_group  n_windows       mae      rmse      mard
+     Healthy     220829  9.587913 15.057505  8.043146
+    Pre-T2DM     227730  9.930065 15.660704  7.855597
+   Oral-T2DM     230379 12.519753 19.708748  8.433418
+Insulin-T2DM     198811 13.882026 21.751696  8.206141
+        T1DM     106507 15.215032 23.863876 11.159954
+  Epoch   11/120 | train_loss=0.001481 | val_loss=SKIP | 86.4s/epoch | ETA: 2:42:49
+  ★ New best at epoch 12 (val_loss=0.001607)
+  Epoch   12/120 | train_loss=0.001471 | val_loss=0.001607 | 92.9s/epoch | ETA: 2:41:49
+  Epoch   13/120 | train_loss=0.001466 | val_loss=SKIP | 85.8s/epoch | ETA: 2:39:45
+  Epoch   14/120 | train_loss=0.001461 | val_loss=0.001608 | 92.3s/epoch | ETA: 2:38:36
+  Epoch   15/120 | train_loss=0.001455 | val_loss=SKIP | 85.9s/epoch | ETA: 2:36:39
+  ★ New best at epoch 16 (val_loss=0.001573)
+  Epoch   16/120 | train_loss=0.001451 | val_loss=0.001573 | 92.7s/epoch | ETA: 2:35:31
+  Epoch   17/120 | train_loss=0.001445 | val_loss=SKIP | 85.6s/epoch | ETA: 2:33:36
+  ★ New best at epoch 18 (val_loss=0.001563)
+  Epoch   18/120 | train_loss=0.001441 | val_loss=0.001563 | 92.2s/epoch | ETA: 2:32:22
+  Epoch   19/120 | train_loss=0.001437 | val_loss=SKIP | 85.6s/epoch | ETA: 2:30:31
+  ★ New best at epoch 20 (val_loss=0.001554)
+  Epoch   20/120 | train_loss=0.001435 | val_loss=0.001554 | 91.8s/epoch | ETA: 2:29:14
+  [Checkpoint] Saved at epoch 20 → runs/glumind/ai_ready_plus_type1/glumind_global_h12_20260226_032703/checkpoints/epoch_0020
+
+=== VAL_EPOCH0020 METRICS (overall, mg/dL) ===
+  MAE : 11.4385
+  RMSE: 17.8833
+  MARD: 8.47%
+
+=== VAL_EPOCH0020 METRICS (by Study Group) ===
+ study_group  n_windows       mae      rmse      mard
+     Healthy     225293  9.529234 14.515932  8.127260
+    Pre-T2DM     229895 10.125854 15.708164  8.260478
+   Oral-T2DM     270933 11.591924 17.841635  8.043850
+Insulin-T2DM     144586 13.645879 20.908545  8.144243
+        T1DM     106507 14.923820 23.511505 11.186621
+
+=== TEST_EPOCH0020 METRICS (overall, mg/dL) ===
+  MAE : 11.7244
+  RMSE: 18.4915
+  MARD: 8.54%
+
+=== TEST_EPOCH0020 METRICS (by Study Group) ===
+ study_group  n_windows       mae      rmse      mard
+     Healthy     220829  9.595129 14.817101  8.157588
+    Pre-T2DM     227730  9.922553 15.408102  7.970603
+   Oral-T2DM     230379 12.417718 19.327929  8.489342
+Insulin-T2DM     198811 13.635819 21.165726  8.263122
+        T1DM     106507 14.923775 23.511452 11.186579
+  Epoch   21/120 | train_loss=0.001430 | val_loss=SKIP | 85.6s/epoch | ETA: 2:27:25
+  Epoch   22/120 | train_loss=0.001424 | val_loss=0.001571 | 91.7s/epoch | ETA: 2:26:07
+  Epoch   23/120 | train_loss=0.001421 | val_loss=SKIP | 86.3s/epoch | ETA: 2:24:24
+  Epoch   24/120 | train_loss=0.001419 | val_loss=0.001563 | 92.7s/epoch | ETA: 2:23:08
+  Epoch   25/120 | train_loss=0.001414 | val_loss=SKIP | 86.9s/epoch | ETA: 2:21:29
+  ★ New best at epoch 26 (val_loss=0.001552)
+  Epoch   26/120 | train_loss=0.001409 | val_loss=0.001552 | 93.2s/epoch | ETA: 2:20:13
+  Epoch   27/120 | train_loss=0.001407 | val_loss=SKIP | 86.7s/epoch | ETA: 2:18:34
+  Epoch   28/120 | train_loss=0.001406 | val_loss=0.001572 | 93.4s/epoch | ETA: 2:17:18
+  Epoch   29/120 | train_loss=0.001401 | val_loss=SKIP | 86.1s/epoch | ETA: 2:15:37
+  Epoch   30/120 | train_loss=0.001399 | val_loss=0.001590 | 92.5s/epoch | ETA: 2:14:17
+  [Checkpoint] Saved at epoch 30 → runs/glumind/ai_ready_plus_type1/glumind_global_h12_20260226_032703/checkpoints/epoch_0030
+
+=== VAL_EPOCH0030 METRICS (overall, mg/dL) ===
+  MAE : 11.9254
+  RMSE: 18.0876
+  MARD: 9.05%
+
+=== VAL_EPOCH0030 METRICS (by Study Group) ===
+ study_group  n_windows       mae      rmse      mard
+     Healthy     225293 10.179668 14.938766  8.868759
+    Pre-T2DM     229895 10.685581 15.982962  8.921603
+   Oral-T2DM     270933 11.983646 17.951893  8.499664
+Insulin-T2DM     144586 13.895716 20.906918  8.474171
+        T1DM     106507 15.471155 23.772226 11.883200
+
+=== TEST_EPOCH0030 METRICS (overall, mg/dL) ===
+  MAE : 12.1864
+  RMSE: 18.6574
+  MARD: 9.10%
+
+=== TEST_EPOCH0030 METRICS (by Study Group) ===
+ study_group  n_windows       mae      rmse      mard
+     Healthy     220829 10.251198 15.230863  8.899866
+    Pre-T2DM     227730 10.516241 15.735018  8.643802
+   Oral-T2DM     230379 12.737654 19.315367  8.908302
+Insulin-T2DM     198811 13.850430 21.142391  8.585301
+        T1DM     106507 15.471189 23.772226 11.883234
+  Epoch   31/120 | train_loss=0.001397 | val_loss=SKIP | 86.1s/epoch | ETA: 2:12:38
+  Epoch   32/120 | train_loss=0.001393 | val_loss=0.001561 | 92.9s/epoch | ETA: 2:11:18
+  Epoch   33/120 | train_loss=0.001391 | val_loss=SKIP | 86.2s/epoch | ETA: 2:09:40
+  Epoch   34/120 | train_loss=0.001389 | val_loss=0.001563 | 92.5s/epoch | ETA: 2:08:18
+  Epoch   35/120 | train_loss=0.001385 | val_loss=SKIP | 86.1s/epoch | ETA: 2:06:40
+  Epoch   36/120 | train_loss=0.001383 | val_loss=0.001576 | 92.9s/epoch | ETA: 2:05:19
+  Epoch   37/120 | train_loss=0.001381 | val_loss=SKIP | 86.4s/epoch | ETA: 2:03:42
+  Epoch   38/120 | train_loss=0.001379 | val_loss=0.001606 | 93.0s/epoch | ETA: 2:02:20
+  Epoch   39/120 | train_loss=0.001375 | val_loss=SKIP | 86.7s/epoch | ETA: 2:00:45
+  Epoch   40/120 | train_loss=0.001374 | val_loss=0.001595 | 94.2s/epoch | ETA: 1:59:25
+  [Checkpoint] Saved at epoch 40 → runs/glumind/ai_ready_plus_type1/glumind_global_h12_20260226_032703/checkpoints/epoch_0040
+
+=== VAL_EPOCH0040 METRICS (overall, mg/dL) ===
+  MAE : 11.7524
+  RMSE: 18.1183
+  MARD: 8.75%
+
+=== VAL_EPOCH0040 METRICS (by Study Group) ===
+ study_group  n_windows       mae      rmse      mard
+     Healthy     225293  9.778026 14.751184  8.353477
+    Pre-T2DM     229895 10.371647 15.863727  8.493194
+   Oral-T2DM     270933 11.925527 17.970242  8.350000
+Insulin-T2DM     144586 13.909813 20.947535  8.388426
+        T1DM     106507 15.540368 24.316792 11.644051
+
+=== TEST_EPOCH0040 METRICS (overall, mg/dL) ===
+  MAE : 12.0393
+  RMSE: 18.7239
+  MARD: 8.82%
+
+=== TEST_EPOCH0040 METRICS (by Study Group) ===
+ study_group  n_windows       mae      rmse      mard
+     Healthy     220829  9.878836 15.048551  8.410385
+    Pre-T2DM     227730 10.195000 15.569534  8.222591
+   Oral-T2DM     230379 12.715611 19.415770  8.778798
+Insulin-T2DM     198811 13.892512 21.279554  8.490248
+        T1DM     106507 15.540409 24.316828 11.644097
+  Epoch   41/120 | train_loss=0.001371 | val_loss=SKIP | 86.6s/epoch | ETA: 1:57:50
+  Epoch   42/120 | train_loss=0.001368 | val_loss=0.001598 | 93.9s/epoch | ETA: 1:56:28
+  Epoch   43/120 | train_loss=0.001366 | val_loss=SKIP | 86.8s/epoch | ETA: 1:54:54
+  Epoch   44/120 | train_loss=0.001363 | val_loss=0.001581 | 93.7s/epoch | ETA: 1:53:32
+  Epoch   45/120 | train_loss=0.001361 | val_loss=SKIP | 86.4s/epoch | ETA: 1:51:56
+  Epoch   46/120 | train_loss=0.001359 | val_loss=0.001595 | 92.3s/epoch | ETA: 1:50:31
+  Epoch   47/120 | train_loss=0.001355 | val_loss=SKIP | 86.1s/epoch | ETA: 1:48:56
+  Epoch   48/120 | train_loss=0.001351 | val_loss=0.001632 | 93.3s/epoch | ETA: 1:47:32
+  Epoch   49/120 | train_loss=0.001349 | val_loss=SKIP | 86.2s/epoch | ETA: 1:45:58
+  Epoch   50/120 | train_loss=0.001345 | val_loss=0.001598 | 92.3s/epoch | ETA: 1:44:32
+  [Checkpoint] Saved at epoch 50 → runs/glumind/ai_ready_plus_type1/glumind_global_h12_20260226_032703/checkpoints/epoch_0050
+
+=== VAL_EPOCH0050 METRICS (overall, mg/dL) ===
+  MAE : 11.6452
+  RMSE: 18.1379
+  MARD: 8.62%
+
+=== VAL_EPOCH0050 METRICS (by Study Group) ===
+ study_group  n_windows       mae      rmse      mard
+     Healthy     225293  9.639781 14.519264  8.271595
+    Pre-T2DM     229895 10.253475 15.730211  8.408906
+   Oral-T2DM     270933 11.750159 17.978416  8.179257
+Insulin-T2DM     144586 13.903379 21.192133  8.291226
+        T1DM     106507 15.558694 24.628193 11.394894
+
+=== TEST_EPOCH0050 METRICS (overall, mg/dL) ===
+  MAE : 11.9362
+  RMSE: 18.7982
+  MARD: 8.69%
+
+=== TEST_EPOCH0050 METRICS (by Study Group) ===
+ study_group  n_windows       mae      rmse      mard
+     Healthy     220829  9.703465 14.784787  8.297267
+    Pre-T2DM     227730 10.051704 15.442336  8.117366
+   Oral-T2DM     230379 12.560019 19.492655  8.617660
+Insulin-T2DM     198811 13.911397 21.639456  8.403615
+        T1DM     106507 15.558702 24.628202 11.394895
+  Epoch   51/120 | train_loss=0.001343 | val_loss=SKIP | 86.1s/epoch | ETA: 1:42:58
+  Epoch   52/120 | train_loss=0.001341 | val_loss=0.001607 | 92.6s/epoch | ETA: 1:41:32
+  Epoch   53/120 | train_loss=0.001339 | val_loss=SKIP | 86.1s/epoch | ETA: 1:39:58
+  Epoch   54/120 | train_loss=0.001337 | val_loss=0.001630 | 92.4s/epoch | ETA: 1:38:32
+  Epoch   55/120 | train_loss=0.001333 | val_loss=SKIP | 86.7s/epoch | ETA: 1:36:59
+  Epoch   56/120 | train_loss=0.001332 | val_loss=0.001633 | 93.5s/epoch | ETA: 1:35:34
+  Epoch   57/120 | train_loss=0.001330 | val_loss=SKIP | 86.5s/epoch | ETA: 1:34:01
+  Epoch   58/120 | train_loss=0.001328 | val_loss=0.001632 | 92.5s/epoch | ETA: 1:32:35
+  Epoch   59/120 | train_loss=0.001326 | val_loss=SKIP | 86.7s/epoch | ETA: 1:31:02
+  Epoch   60/120 | train_loss=0.001324 | val_loss=0.001628 | 93.3s/epoch | ETA: 1:29:36
+  [Checkpoint] Saved at epoch 60 → runs/glumind/ai_ready_plus_type1/glumind_global_h12_20260226_032703/checkpoints/epoch_0060
+
+=== VAL_EPOCH0060 METRICS (overall, mg/dL) ===
+  MAE : 11.5932
+  RMSE: 18.3037
+  MARD: 8.48%
+
+=== VAL_EPOCH0060 METRICS (by Study Group) ===
+ study_group  n_windows       mae      rmse      mard
+     Healthy     225293  9.423628 14.446258  7.994796
+    Pre-T2DM     229895 10.080112 15.731470  8.173061
+   Oral-T2DM     270933 11.677877 18.045984  8.053123
+Insulin-T2DM     144586 13.958643 21.424360  8.258113
+        T1DM     106507 16.022310 25.431133 11.598228
+
+=== TEST_EPOCH0060 METRICS (overall, mg/dL) ===
+  MAE : 11.9043
+  RMSE: 18.9998
+  MARD: 8.57%
+
+=== TEST_EPOCH0060 METRICS (by Study Group) ===
+ study_group  n_windows       mae      rmse      mard
+     Healthy     220829  9.525130 14.766600  8.051656
+    Pre-T2DM     227730  9.889057 15.463669  7.892533
+   Oral-T2DM     230379 12.495651 19.601292  8.496961
+Insulin-T2DM     198811 13.964006 21.894590  8.362978
+        T1DM     106507 16.022354 25.431154 11.598255
+  Epoch   61/120 | train_loss=0.001320 | val_loss=SKIP | 86.3s/epoch | ETA: 1:28:03
+  Epoch   62/120 | train_loss=0.001318 | val_loss=0.001644 | 92.8s/epoch | ETA: 1:26:37
+  Epoch   63/120 | train_loss=0.001316 | val_loss=SKIP | 85.9s/epoch | ETA: 1:25:04
+  Epoch   64/120 | train_loss=0.001314 | val_loss=0.001645 | 93.0s/epoch | ETA: 1:23:37
+  Epoch   65/120 | train_loss=0.001312 | val_loss=SKIP | 86.7s/epoch | ETA: 1:22:05
+  Early stopping at epoch 66 (patience=20)
+
+  Summary: best_model.pt = epoch 26 | last_model.pt = epoch 66
+
+=== VAL METRICS (overall, mg/dL) ===
+  MAE : 11.4340
+  RMSE: 17.8699
+  MARD: 8.46%
+
+=== VAL METRICS (by Study Group) ===
+ study_group  n_windows       mae      rmse      mard
+     Healthy     225293  9.498206 14.494007  8.109479
+    Pre-T2DM     229895 10.094826 15.667983  8.246570
+   Oral-T2DM     270933 11.575196 17.810575  8.034985
+Insulin-T2DM     144586 13.641491 20.907864  8.130013
+        T1DM     106507 15.063045 23.564722 11.214650
+
+=== TEST METRICS (overall, mg/dL) ===
+  MAE : 11.6987
+  RMSE: 18.4568
+  MARD: 8.52%
+
+=== TEST METRICS (by Study Group) ===
+ study_group  n_windows       mae      rmse      mard
+     Healthy     220829  9.572092 14.786479  8.147040
+    Pre-T2DM     227730  9.887127 15.365112  7.953131
+   Oral-T2DM     230379 12.347430 19.231108  8.452931
+Insulin-T2DM     198811 13.582047 21.146038  8.218802
+        T1DM     106507 15.063043 23.564716 11.214652
+
+Done.

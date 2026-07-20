@@ -3,8 +3,8 @@
 **Date:** 2026-06-13  
 **Evaluation tool:** `uv run evaluate-model` (`scripts/sugar_one/evaluate_model.py`)  
 **Model checkpoint:** `runs/sugar_one_tune/production/trial_0000_bcd3813f` (`best_model.pt`)  
-**Test dataset:** `data/loop_and_ai_ready/ablation_test.csv`  
-**Scaler fitting:** `data/loop_and_ai_ready/loop_ai_ready_joined2.csv` (train split)
+**Test dataset:** `ablation_test.csv` (historically under `data/loop_and_ai_ready/`; see [DATA.md](DATA.md) for `data/input/` layout)  
+**Scaler fitting:** `loop_ai_ready_joined2.csv` (train split)
 
 ---
 

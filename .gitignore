@@ -208,7 +208,17 @@ __marimo__/
 
 runs/
 marked_runs/
-data/
+/data/*
+!/data/catalog/
+!/data/catalog/**
+!/data/input/
+!/data/input/.gitignore
+!/data/cache/
+!/data/cache/.gitignore
+!/data/processed/
+!/data/processed/.gitignore
+!/data/output/
+!/data/output/.gitignore
 temp/
 
 *.zip

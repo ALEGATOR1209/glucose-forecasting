@@ -1,5 +1,5 @@
 {
-  "csv": "D:\\01_1_LIVIA\\LIVIA_DOCS\\CODING\\sources\\glucose-forecasting\\data\\loop_and_ai_ready\\loop_ai_ready_joined2.csv",
+  "csv": "data/input/loop_ai_ready_joined2.csv",
   "unique_id": "sequence_id",
   "drop_interpolated": false,
   "study_groups": "",

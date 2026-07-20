@@ -21,7 +21,8 @@ Scope: `global` training mode only.
 
 ```bash
 uv run python scripts/sugar_jepa/train_sugar_jepa.py \
-  --csv data/loop_and_ai_ready/loop_ai_ready_joined2_dev.csv --device cuda \
+  --csv data/input/loop_ai_ready_joined2_dev.csv \
+  --device cuda \
   --d-model 32 --n-heads 8 --n-blocks 5 --ff-units 128 --input-steps 128 --horizon 12 \
   --lr 0.0004 --weight-decay 0.00003 --batch-size 256 \
   --epochs 30 --patience 3 --val-every-n-epochs 5 --num-workers 0 \
@@ -97,9 +98,9 @@ a shape mismatch between the SSL config and the training config is an error, not
 
 ```bash
 uv run python scripts/sugar_jepa/evaluate_sugar_jepa.py \
-  --run-dir runs/sugar_jepa/<run_name> \
-  --test-csv data/loop_and_ai_ready/loop_ai_ready_joined2_dev.csv \
-  --test-split test --device cuda
+  --run-dir data/output/runs/sugar_jepa/<run_name> \
+  --test-csv data/input/loop_ai_ready_joined2_dev.csv \
+  --device cuda
 ```
 
 Reports MAE / RMSE / MARD overall and per Study Group, and prints the checkpoint's learned mix weights.
@@ -127,9 +128,10 @@ routing around the branch and whatever it learns is coming from the SugarOne bac
 uv run pytest tests/test_sugar_jepa_batch_first.py tests/test_jepa_pretrain.py -q
 
 uv run python scripts/sugar_jepa/train_sugar_jepa.py \
+  --csv data/input/loop_ai_ready_joined2_dev.csv \
+  --device cuda --epochs 2 --max-train-series 20 --max-eval-series 10 \
+  --batch-size 32 --n-blocks 2 --out-dir data/output/runs/sugar_jepa_smoketest
   --csv data/loop_and_ai_ready/loop_ai_ready_joined2_dev.csv \
-  --device cpu --epochs 2 --max-train-series 20 --max-eval-series 10 \
-  --batch-size 32 --n-blocks 2 --precision fp32 --out-dir runs/sugar_jepa_smoketest
 ```
 
 `tests/test_sugar_jepa_smoke.py` is **stale and failing** — it tests the retired 288-step dataset. Rewrite

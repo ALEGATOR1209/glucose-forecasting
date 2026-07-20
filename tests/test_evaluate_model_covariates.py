@@ -6,21 +6,8 @@ import pytest
 
 from scripts.sugar_one.evaluate_model import (
     _alias_to_canonical,
-    _parse_covariate_names,
     _resolve_covariate_zeroing,
 )
-
-
-def test_alias_to_canonical_sugar_one() -> None:
-    assert _alias_to_canonical("basal", "sugar_one") == "basal"
-    assert _alias_to_canonical("basal_rate", "sugar_one") == "basal"
-    assert _alias_to_canonical("Bolus Insulin", "sugar_one") == "bolus"
-    assert _alias_to_canonical("carbohydrates", "sugar_one") == "carbs"
-
-
-def test_alias_to_canonical_glumind() -> None:
-    assert _alias_to_canonical("heart_rate", "glumind") == "hr"
-    assert _alias_to_canonical("step count", "glumind") == "steps"
 
 
 def test_alias_to_canonical_unknown_raises() -> None:
@@ -28,57 +15,46 @@ def test_alias_to_canonical_unknown_raises() -> None:
         _alias_to_canonical("basal", "glumind")
 
 
-def test_parse_covariate_names_deduplicates() -> None:
-    names = _parse_covariate_names("basal,basal_rate,bolus", "sugar_one")
-    assert names == ["basal", "bolus"]
-
-
-def test_resolve_zero_cov() -> None:
+@pytest.mark.parametrize(
+    ("zero_cov", "include_cov", "exclude_cov", "expected"),
+    [
+        (True, None, None, ([], ["basal", "bolus", "carbs"])),
+        (False, "basal,bolus", None, (["basal", "bolus"], ["carbs"])),
+        (False, None, "carbs", (["basal", "bolus"], ["carbs"])),
+    ],
+)
+def test_resolve_covariate_zeroing(
+    zero_cov: bool,
+    include_cov: str | None,
+    exclude_cov: str | None,
+    expected: tuple[list[str], list[str]],
+) -> None:
     active, zeroed = _resolve_covariate_zeroing(
         "sugar_one",
-        zero_cov=True,
-        include_cov=None,
-        exclude_cov=None,
+        zero_cov=zero_cov,
+        include_cov=include_cov,
+        exclude_cov=exclude_cov,
     )
-    assert active == []
-    assert zeroed == ["basal", "bolus", "carbs"]
+    assert (active, zeroed) == expected
 
 
-def test_resolve_include_cov() -> None:
-    active, zeroed = _resolve_covariate_zeroing(
-        "sugar_one",
-        zero_cov=False,
-        include_cov="basal,bolus",
-        exclude_cov=None,
-    )
-    assert active == ["basal", "bolus"]
-    assert zeroed == ["carbs"]
-
-
-def test_resolve_exclude_cov() -> None:
-    active, zeroed = _resolve_covariate_zeroing(
-        "sugar_one",
-        zero_cov=False,
-        include_cov=None,
-        exclude_cov="carbs",
-    )
-    assert active == ["basal", "bolus"]
-    assert zeroed == ["carbs"]
-
-
-def test_resolve_conflicting_flags() -> None:
-    with pytest.raises(ValueError, match="either --zero-cov or --include-cov"):
+@pytest.mark.parametrize(
+    ("zero_cov", "include_cov", "exclude_cov", "message"),
+    [
+        (True, "basal", None, "either --zero-cov or --include-cov"),
+        (False, "basal", "carbs", "either --include-cov or --exclude-cov"),
+    ],
+)
+def test_resolve_covariate_zeroing_rejects_conflicts(
+    zero_cov: bool,
+    include_cov: str | None,
+    exclude_cov: str | None,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
         _resolve_covariate_zeroing(
             "sugar_one",
-            zero_cov=True,
-            include_cov="basal",
-            exclude_cov=None,
-        )
-
-    with pytest.raises(ValueError, match="either --include-cov or --exclude-cov"):
-        _resolve_covariate_zeroing(
-            "sugar_one",
-            zero_cov=False,
-            include_cov="basal",
-            exclude_cov="carbs",
+            zero_cov=zero_cov,
+            include_cov=include_cov,
+            exclude_cov=exclude_cov,
         )

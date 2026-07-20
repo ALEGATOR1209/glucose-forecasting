@@ -2,9 +2,11 @@
 
 This report summarizes the GluMind model's architecture, training modes, and performance metrics across different study groups and datasets.
 
+> **Naming:** This document is about wearable **GluMind** (BGI: “GluMind (Ours)”). The insulin/carb model is **SugarOne** (formerly GluMindIC). See [MILESTONES.md](MILESTONES.md). Training CSVs are produced by [glucose_data_processing](https://github.com/GlucoseDAO/glucose_data_processing) — [DATA.md](DATA.md).
+
 ## 1. Project Overview
 
-The `glucose-forecasting` project is designed for blood glucose prediction using multimodal data (Glucose, Heart Rate, and Step Count). It primarily targets the **AI-READI** dataset and combined cohorts.
+The `glucose-forecasting` project predicts blood glucose from multimodal CGM data. This report covers **GluMind** (Glucose, Heart Rate, Step Count) on **AI-READI** and combined cohorts.
 
 ### Key Concepts:
 - **Model**: `GluMind` - A Parallel-Attention Transformer architecture.

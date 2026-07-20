@@ -4,12 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-Training, tuning, and evaluation pipelines for blood-glucose forecasting from CGM (continuous glucose monitor) data, on AI-READI-style and Loop-pump-style datasets. Several model variants exist as parallel experiments sharing similar training/eval scaffolding but different covariates:
+Training, tuning, and evaluation pipelines for blood-glucose forecasting from CGM (continuous glucose monitor) data, on AI-READI-style and Loop-pump-style datasets.
 
-- **GluMind** (`scripts/glumind/`) — glucose + heart rate + step count. Primary architecture (Farahmand et al., 2025b, arXiv:2509.18457): parallel cross-attention multimodal fusion + multi-scale self-attention, with optional LwF (learning-without-forgetting) for continual cross-cohort training.
+**Data preprocessing is a separate repo:** [GlucoseDAO/glucose_data_processing](https://github.com/GlucoseDAO/glucose_data_processing). This forecasting repo consumes ML-ready CSVs (prefer `data/input/`, gitignored). See `docs/DATA.md`.
+
+**Naming:** BGI text called the wearable multimodal model **“GluMind (Ours)”** and the insulin/carb adaptation **GluMindIC**. GluMindIC was renamed to **SugarOne**. SugarOne is the current primary model for pump/loop data; GluMind remains the HR/steps baseline. Details: `docs/MILESTONES.md`.
+
+Model variants (shared training/eval scaffolding, different covariates):
+
+- **SugarOne** (`scripts/sugar_one/`) — glucose + basal rate + bolus insulin + carbohydrates (Loop pump data), 3-way cross-attention with learnable softmax mixing weights. Formerly GluMindIC.
+- **GluMind** (`scripts/glumind/`) — glucose + heart rate + step count. Independent reimplementation of Farahmand et al., 2025b (arXiv:2509.18457): parallel cross-attention multimodal fusion + multi-scale self-attention, optional LwF for continual cross-cohort training.
 - **GluMind-Uni** (`scripts/glumind_uni/`) — glucose-only variant of the same architecture.
-- **SugarOne** (`scripts/sugar_one/`) — glucose + basal rate + bolus insulin + carbohydrates (Loop pump data), 3-way cross-attention with learnable softmax mixing weights (vs. GluMind's fixed 2-way averaging).
-- **NeuralForecast baselines** (`scripts/tune_nf_baselines_by_group.py`) — NHITS / TFT / NBEATSx, glucose-only.
+- **NeuralForecast baselines** (`src/glucose_forecasting/backends/neuralforecast/`) — package-native fixed-split holdout and rolling cross-validation evaluation, selected through `glucose train --backend neuralforecast --eval ...`.
 - **GluFormer** (`scripts/eval_gluformer_val_test_masked.py`) — evaluation only, against a pretrained Hugging Face model (`njeffrie/Gluformer`).
 
 Forecast horizon defaults to 12 steps = 60 minutes at 5-minute sampling frequency.
@@ -23,11 +29,15 @@ uv sync
 
 Run tests:
 ```bash
-uv run pytest -q            # full suite (tests/ — 21 tests as of this writing)
-uv run pytest tests/test_evaluate_model_covariates.py -q   # single file
-uv run pytest tests/test_train_checkpoint_resume.py::test_checkpoint_stores_wait_and_resumes_next_epoch -q  # single test
+uv run pytest -q                                      # full suite
+uv run pytest tests/test_train_cli_smoke.py -q        # parametrized train smokes (all model families)
+uv run pytest tests/test_evaluate_model_covariates.py -q
 ```
 No lint/format command is configured in `pyproject.toml`.
+
+**Device selection:** never hardcode `--device cpu` or `device="cpu"` in commands, scripts, or tests. Always use `device="auto"` (the default), which detects CUDA → MPS → CPU. If the machine has a GPU, use it.
+
+**Testing style (also in `AGENTS.md`):** prefer behavioral smokes over thin helper unit files; parametrize GluMind/SugarOne/Uni (do not copy a whole test per model); construct shared strings/flags/dims from constants or tables instead of pasting argv/artifact literals. Patterns: `tests/test_train_cli_smoke.py`, `tests/test_models_forward.py`, `tests/test_datasets.py`.
 
 Installed console commands (defined in `pyproject.toml` `[project.scripts]`, all runnable as `uv run <name> --help`):
 - `train-glumind` → `scripts/glumind/train_glumind.py:main` (argparse CLI)
@@ -41,7 +51,7 @@ Scripts without a console entry point are run directly, e.g.:
 ```bash
 uv run python scripts/sugar_one/train_sugar_one.py --help          # Typer, no subcommand name
 uv run python scripts/glumind_uni/train_uniglumind.py train --help # Typer, `train` subcommand
-uv run python scripts/tune_nf_baselines_by_group.py -h              # argparse
+uv run glucose train --backend neuralforecast --data DATA.csv --help
 uv run python scripts/eval_gluformer_val_test_masked.py -h          # argparse
 uv run python scripts/glumind/upload_to_huggingface.py --help
 ```
@@ -50,11 +60,11 @@ Full flag reference and worked examples for every script live in the root `READM
 
 Fast smoke test after code changes (no GPU, no full dataset needed):
 ```bash
-uv run evaluate-model --run-dir test_model_glumind --model-type glumind \
-  --test-csv test_data/livia_glumind_ready.csv --train-csv test_data/livia_glumind_ready.csv \
-  --test-split "" --batch-size 4096
+uv run evaluate-model --run-dir test_model_sugar_one --model-type sugar_one \
+ --test-csv test_data/livia_sugar_one_ready.csv --train-csv test_data/livia_sugar_one_ready.csv \
+ --test-split '' --batch-size 256
 ```
-This uses the bundled reviewer checkpoint (`test_model_glumind/`) and demo CSV (`test_data/livia_glumind_ready.csv`, ~140k rows, no `Recommended Split` column — always pass `--test-split ""` for it). For SugarOne against the same demo file, add `--zero-cov` since it has no insulin/carb columns. See README.md "Evaluate on `test_data/livia_glumind_ready.csv`" section for exact commands including the SugarOne case.
+Bundled checkpoints: `test_model_sugar_one/`, `test_model_glumind/`. Demo CSVs under `test_data/` have no usable `Recommended Split` — always pass `--test-split ''` and `--train-csv` pointing at the demo file. Full commands: `How_to_run_checkpoint.md`.
 
 ## Architecture
 
@@ -92,9 +102,15 @@ All training scripts (GluMind, SugarOne, GluMind-Uni) support the same four mode
 
 ### CLI framework split
 
-`train_glumind.py`, `tune_nf_baselines_by_group.py`, and `eval_gluformer_val_test_masked.py` use argparse; `train_sugar_one.py`, `train_uniglumind.py`, `evaluate_glumind.py`, `evaluate_model.py`, `tune_sugar_one.py` use Typer. This is a known inconsistency (not enforced) — check which framework a script uses before assuming flag syntax (argparse: `--snake_case`; Typer: `--kebab-case`).
+`train_glumind.py` and `eval_gluformer_val_test_masked.py` use argparse; `train_sugar_one.py`, `train_uniglumind.py`, `evaluate_glumind.py`, `evaluate_model.py`, `tune_sugar_one.py`, and `glucose train` use Typer. This is a known inconsistency (not enforced) — check which framework a script uses before assuming flag syntax (argparse: `--snake_case`; Typer: `--kebab-case`).
+
+### CLI naming convention
+
+For new CLIs, avoid long hyphenated executable names. Prefer one concise root Typer command with action-first subcommands, such as `glucose forecast`, `glucose train`, and `glucose models`. Select a model or backend with options, for example `glucose train --model sugarone` or `glucose train --backend neuralforecast --eval holdout`. Use `--eval holdout` or `--eval cross-val` when selecting an ML evaluation protocol; reserve “workflow” for multi-step orchestration. Use kebab-case only for multi-word option names when necessary. Do not rename legacy commands solely for this convention; preserve their compatibility.
 
 ### Data expectations
+
+ML-ready CSVs come from **glucose_data_processing**, not this repo. Put them in `data/input/` (or symlink historical paths — see `docs/DATA.md`).
 
 Core AI-READI CSV columns: `sequence_id`, `User ID`, `Timestamp (YYYY-MM-DDThh:mm:ss)`, `Recommended Split` (`train`/`val`/`test`), `Study Group`, `Event Type`, `Glucose Value (mg/dL)`, `Heart Rate`, `Step Count`.
 
@@ -102,7 +118,7 @@ Loop/SugarOne CSVs additionally/instead have: `Glucose (mg/dL)` (or `Glucose Val
 
 `evaluate-model` resolves column aliases automatically and can zero out or ablate individual covariates at inference time (`--zero-cov`, `--include-cov`, `--exclude-cov`) for cross-model/cross-covariate comparison — this is the main tool for comparing GluMind vs. SugarOne on the same data.
 
-`scripts/loop_ai_ready/` contains one-off data-joining scripts (Loop pump export + AI-READI CSV → unified CSV); not part of the training/eval pipeline itself.
+`scripts/loop_ai_ready/` joins Loop + AI-READI ML-ready CSVs into `loop_ai_ready_joined2.csv` after preprocessing.
 
 ### Known dead/unwired flags
 
@@ -110,7 +126,7 @@ Loop/SugarOne CSVs additionally/instead have: `Glucose (mg/dL)` (or `Glucose Val
 
 ### Reports and run artifacts
 
-`runs/` and `marked_runs/` hold training outputs (checkpoints, per-split metrics CSVs, `tuning_meta.json`). `marked_runs/` is curated/annotated subset with `RUNS_ANALYSIS.md` writeups per model/dataset combo. `reports/` and `docs/reports/` hold longer-form comparison and milestone writeups (e.g. `docs/GLUMIND_VS_SUGARONE_COMPARISON.md`, `docs/T1DM_COVARIATE_ABLATION_REPORT.md`). Root `CROSS_MODEL_COMPARISON.md` is the cross-model summary.
+`data/output/runs/` holds generated training outputs (checkpoints, per-split metrics CSVs, `tuning_meta.json`). `marked_runs/` is a separate curated/annotated subset with `RUNS_ANALYSIS.md` writeups per model/dataset combo. `reports/` and `docs/reports/` hold longer-form comparison and milestone writeups (e.g. `docs/GLUMIND_VS_SUGARONE_COMPARISON.md`, `docs/T1DM_COVARIATE_ABLATION_REPORT.md`). Root `CROSS_MODEL_COMPARISON.md` is the cross-model summary.
 
 ## Things I don't know / should ask about
 

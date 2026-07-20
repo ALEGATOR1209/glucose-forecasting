@@ -23,12 +23,14 @@ import torch
 import typer
 from torch.utils.data import DataLoader
 
-from scripts.glumind.glumind_model import GluMindModel
-from scripts.glumind.train_glumind import (
-    load_splits_streaming,
+from glucose_forecasting.data.glumind import (
+    GlucoseWindowDataset,
     apply_split_scheme,
     impute_and_sort,
-    GlucoseWindowDataset,
+    load_splits_streaming,
+)
+from glucose_forecasting.models.glumind import GluMindModel
+from glucose_forecasting.training.glumind import (
     mae_rmse_mard,
     evaluate,
 )
@@ -124,7 +126,6 @@ def main(
     train_df, val_df, test_df = load_splits_streaming(
         csv_path,
         unique_id_choice=meta.get("unique_id", "sequence_id"),
-        chunk_size=meta.get("chunk_size", 1000000),
         drop_interpolated=meta.get("drop_interpolated", False),
     )
 
@@ -149,7 +150,7 @@ def main(
 
     # 7. Select evaluation set
     eval_df = test_df if resolved_mode == "test" else val_df
-    if eval_df.empty:
+    if eval_df.is_empty():
         typer.echo(f"Error: Resolved mode '{resolved_mode}' produced an empty dataset.", err=True)
         raise typer.Exit(1)
 

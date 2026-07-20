@@ -42,8 +42,7 @@ import typer
 from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import DataLoader
 
-from scripts.glumind.glumind_model import GluMindModel
-from scripts.glumind.train_glumind import (
+from glucose_forecasting.data.glumind import (
     COL_GLU,
     COL_GROUP,
     COL_HR,
@@ -55,9 +54,12 @@ from scripts.glumind.train_glumind import (
     TS_FORMAT,
     GlucoseWindowDataset,
     apply_split_scheme,
-    evaluate,
     impute_and_sort,
     load_splits_streaming,
+)
+from glucose_forecasting.models.glumind import GluMindModel
+from glucose_forecasting.training.glumind import (
+    evaluate,
     mae_rmse_mard,
 )
 from scripts.common.checkpoint import strip_compile_prefix

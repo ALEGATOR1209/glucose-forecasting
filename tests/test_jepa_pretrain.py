@@ -18,18 +18,21 @@ from scripts.sugar_jepa.jepa_pretrain import (
     _forward_loss,
     collapse_metrics,
     ema_update,
+    load_encoder_init,
     momentum_at,
+    resolve_block_sizes,
     sample_block_mask,
     variance_penalty,
 )
 from scripts.sugar_jepa.sugar_jepa_model import JepaEncoder
 
 N_PATCHES, EMBED_DIM, PATCH, STEPS = 16, 32, 8, 128
+LONG_STEPS = 288  # the 24h JEPA window: 36 patches at PATCH=8
 
 
-def _encoder() -> JepaEncoder:
+def _encoder(steps: int = STEPS) -> JepaEncoder:
     return JepaEncoder(
-        n_time_steps=STEPS, patch_size=PATCH, embed_dim=EMBED_DIM, n_layers=2, n_heads=4
+        n_time_steps=steps, patch_size=PATCH, embed_dim=EMBED_DIM, n_layers=2, n_heads=4
     )
 
 
@@ -63,6 +66,78 @@ def test_impossible_mask_raises_instead_of_looping_forever():
     rng = random.Random(2)
     with pytest.raises(RuntimeError, match="Could not place"):
         sample_block_mask(N_PATCHES, n_targets=8, min_block=8, max_block=8, rng=rng)
+
+
+@pytest.mark.parametrize(
+    ("n_patches", "expected"),
+    [
+        (N_PATCHES, (2, 4)),          # the historical fixed defaults, reproduced exactly
+        (LONG_STEPS // PATCH, (4, 9)),
+    ],
+)
+def test_auto_block_sizes_hold_the_masking_ratio_across_window_lengths(n_patches, expected):
+    """The whole point of auto sizing: changing --window must not quietly change how
+    hard the objective is. Fixed 2/4 blocks mask 50-100% of 16 patches but only
+    22-44% of 36."""
+    assert resolve_block_sizes(n_patches, 0, 0) == expected
+
+    lo, hi = resolve_block_sizes(n_patches, 0, 0)
+    ratio = 4 * lo / n_patches  # 4 = the default --n-targets
+    assert 0.4 <= ratio <= 0.6
+
+
+def test_explicit_block_sizes_are_not_overridden():
+    assert resolve_block_sizes(LONG_STEPS // PATCH, 3, 5) == (3, 5)
+
+
+# --- warm-starting across window lengths ------------------------------------
+
+def test_warm_start_transfers_weights_to_a_longer_window(tmp_path):
+    """A w128 encoder must be loadable into a w288 one: every learned tensor is
+    length-agnostic, and only the sinusoidal position buffer is resized."""
+    short = _encoder(STEPS)
+    ckpt = tmp_path / "encoder.pt"
+    torch.save(short.state_dict(), ckpt)
+
+    long = _encoder(LONG_STEPS)
+    n_loaded = load_encoder_init(long, ckpt, torch.device("cpu"))
+
+    assert n_loaded == len(short.state_dict()) - 1  # everything except pos_enc.pe
+    for key, tensor in long.state_dict().items():
+        if key != "pos_enc.pe":
+            torch.testing.assert_close(tensor, short.state_dict()[key])
+
+    # The regenerated buffer is sized to the NEW sequence, not copied from the old.
+    assert long.state_dict()["pos_enc.pe"].shape[1] == LONG_STEPS // PATCH
+    assert long(torch.randn(2, LONG_STEPS)).shape == (2, LONG_STEPS // PATCH, EMBED_DIM)
+
+
+def test_warm_start_refuses_a_genuinely_incompatible_checkpoint(tmp_path):
+    """Only pos_enc.pe may be resized. A different width is a real mismatch and must
+    fail loudly rather than load a partial encoder."""
+    import typer
+
+    other = JepaEncoder(
+        n_time_steps=STEPS, patch_size=PATCH, embed_dim=EMBED_DIM * 2, n_layers=2, n_heads=4
+    )
+    ckpt = tmp_path / "wide.pt"
+    torch.save(other.state_dict(), ckpt)
+
+    with pytest.raises(typer.BadParameter, match="not shape-compatible"):
+        load_encoder_init(_encoder(LONG_STEPS), ckpt, torch.device("cpu"))
+
+
+def test_warm_start_refuses_a_checkpoint_with_a_different_depth(tmp_path):
+    import typer
+
+    deep = JepaEncoder(
+        n_time_steps=STEPS, patch_size=PATCH, embed_dim=EMBED_DIM, n_layers=3, n_heads=4
+    )
+    ckpt = tmp_path / "deep.pt"
+    torch.save(deep.state_dict(), ckpt)
+
+    with pytest.raises(typer.BadParameter, match="does not match"):
+        load_encoder_init(_encoder(LONG_STEPS), ckpt, torch.device("cpu"))
 
 
 # --- EMA target encoder ------------------------------------------------------

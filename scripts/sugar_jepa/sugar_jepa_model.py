@@ -482,8 +482,28 @@ class SugarJepaModel2(nn.Module):
     SugarJepa: SugarOne's Multimodal Parallel-Attention Transformer, plus
     JEPA glucose encoder as a 4th cross-attention auxiliary.
 
-    Input:  x (batch, n_time_steps, 4) — [glucose, basal, bolus, carbs]
+    Input:  x (batch, lookback, 4) — [glucose, basal, bolus, carbs]
     Output: (batch, prediction_horizon)
+
+    Two windows, one tensor
+    ----------------------
+    The JEPA branch may read a LONGER glucose-only lookback than the backbone
+    (`jepa_window`, default = `n_time_steps`). Both views end at the same instant
+    — "now", the step before the first forecast — so rather than carrying a second
+    tensor through the dataset and the training loop, the caller passes one window
+    of `lookback = max(n_time_steps, jepa_window)` steps and this module takes the
+    trailing slice each branch needs:
+
+        x            |<-------------- lookback = 288 -------------->| now
+        JEPA branch  |<-------------- jepa_window = 288 ----------->|
+        backbone                     |<-- n_time_steps = 128 ------>|
+
+    That keeps the dataset contract SugarOne's plain `(x, y)` — no second tensor,
+    no second scaler, no bespoke training loop — at the cost of carrying the three
+    covariate channels over the extra steps, where only glucose is read.
+
+    Defaulting `jepa_window` to `n_time_steps` makes the single-window behaviour
+    (and every checkpoint trained under it) exactly what it was before.
     """
 
     def __init__(
@@ -496,6 +516,7 @@ class SugarJepaModel2(nn.Module):
         n_blocks: int = 3,
         prediction_horizon: int = 12,
         dropout: float = 0.1,
+        jepa_window: int | None = None,
         jepa_patch_size: int = 8,
         jepa_heads: int = 6,
         jepa_layers: int = 3,
@@ -506,6 +527,9 @@ class SugarJepaModel2(nn.Module):
     ):
         super().__init__()
         self.n_time_steps = n_time_steps
+        self.jepa_window = n_time_steps if jepa_window is None else jepa_window
+        # What __getitem__ must hand us: enough history for whichever view is longer.
+        self.lookback = max(n_time_steps, self.jepa_window)
         self.d_model = d_model
         self.n_features = n_features
 
@@ -517,7 +541,7 @@ class SugarJepaModel2(nn.Module):
         self.pos_enc = PositionalEncoding(d_model, max_len=n_time_steps)
 
         self.jepa_encoder = JepaEncoder(
-            n_time_steps=n_time_steps,
+            n_time_steps=self.jepa_window,
             patch_size=jepa_patch_size,
             embed_dim=jepa_embed_dim,
             n_layers=jepa_layers,
@@ -543,21 +567,34 @@ class SugarJepaModel2(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """x: (batch, seq, 4) — glucose, basal, bolus, carbs"""
-        g = x[..., 0:1]  # (batch, seq, 1)
-        b = x[..., 1:2]  # basal rate
-        bo = x[..., 2:3]  # bolus insulin
-        c = x[..., 3:4]  # carbohydrates
+        """x: (batch, lookback, 4) — glucose, basal, bolus, carbs.
 
-        g_e = self.pos_enc(self.embed_glucose(g))    # (batch, seq, d_model)
+        `lookback` is max(n_time_steps, jepa_window); both views are trailing
+        slices of it, so they end at the same instant.
+        """
+        if x.size(1) != self.lookback:
+            raise ValueError(
+                f"expected {self.lookback} steps (max of n_time_steps="
+                f"{self.n_time_steps} and jepa_window={self.jepa_window}), "
+                f"got {x.size(1)} — build the dataset with input_steps=lookback."
+            )
+
+        ctx = x[:, -self.n_time_steps :, :]  # the backbone's own, shorter window
+        g = ctx[..., 0:1]  # (batch, n_time_steps, 1)
+        b = ctx[..., 1:2]  # basal rate
+        bo = ctx[..., 2:3]  # bolus insulin
+        c = ctx[..., 3:4]  # carbohydrates
+
+        g_e = self.pos_enc(self.embed_glucose(g))    # (batch, n_time_steps, d_model)
         b_e = self.pos_enc(self.embed_basal(b))
         bo_e = self.pos_enc(self.embed_bolus(bo))
         c_e = self.pos_enc(self.embed_carbs(c))
 
-        # JEPA reads the same window, glucose channel only, and yields one K/V
-        # position per patch (n_patches = seq // jepa_patch_size).
-        jepa_e = self.jepa_encoder(x[..., 0])   # (batch, n_patches, embed_dim)
-        jepa_e = self.jepa_proj(jepa_e)         # (batch, n_patches, d_model)
+        # JEPA reads its own (possibly longer) trailing window, glucose channel
+        # only, and yields one K/V position per patch — a different sequence
+        # length from the query, which cross-attention has always allowed.
+        jepa_e = self.jepa_encoder(x[:, -self.jepa_window :, 0])  # (batch, n_patches, embed_dim)
+        jepa_e = self.jepa_proj(jepa_e)                           # (batch, n_patches, d_model)
 
         out = g_e
         for block in self.blocks:

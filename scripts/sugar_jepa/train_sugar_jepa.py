@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 """
-SugarJepa — SugarOne + a pretrained CGM-JEPA glucose embedding as a 4th
-cross-attention auxiliary stream. See scripts/sugar_jepa/sugar_jepa_model.py
-and scripts/sugar_jepa/README.md.
+SugarJepa — SugarOne + our own JEPA glucose encoder as a 4th cross-attention
+auxiliary stream. See scripts/sugar_jepa/sugar_jepa_model.py and
+scripts/sugar_jepa/README.md.
 
 Dataset: data/input/loop_ai_ready_joined2_dev.csv (or the full
 loop_ai_ready_joined2.csv).
+
+Two windows: the backbone reads `--input-steps` steps, the JEPA branch reads
+`--jepa-window` (default 288 = 24h), and both end at the same instant. The
+dataset builds ONE window of `max(input_steps, jepa_window)` steps and the model
+slices each view out of it, so the batch stays SugarOne's plain `(x, y)` and
+every model-agnostic piece below is still imported from train_sugar_one.py
+rather than reimplemented. `--jepa-window` must match the `--window` the encoder
+passed to `--jepa-init` was pretrained at.
 
 Proof-of-concept scope: `global` mode only (one model, all study groups) —
 per_group / cohort_wise / continual (LwF) from train_sugar_one.py are not
@@ -85,6 +93,7 @@ def make_model(cfg: dict, device: torch.device) -> SugarJepaModel2:
         n_blocks=cfg["n_blocks"],
         prediction_horizon=cfg["horizon"],
         dropout=cfg["dropout"],
+        jepa_window=cfg["jepa_window"],
         jepa_patch_size=cfg["jepa_patch_size"],
         jepa_embed_dim=cfg["jepa_embed_dim"],
         jepa_layers=cfg["jepa_layers"],
@@ -320,9 +329,27 @@ def _mode_global(
     out_dir: Path,
 ) -> None:
     typer.echo("\n=== MODE: GLOBAL ===")
+    # One window per sample, long enough for both views; the model slices the
+    # backbone's shorter one out of it (see SugarJepaModel2.forward).
+    lookback = max(cfg["input_steps"], cfg["jepa_window"])
+    if lookback > cfg["input_steps"]:
+        typer.echo(
+            f"  Lookback {lookback} steps (jepa_window={cfg['jepa_window']} > "
+            f"input_steps={cfg['input_steps']}) — series shorter than "
+            f"{lookback + cfg['horizon']} rows contribute no windows."
+        )
     train_ds, val_ds, test_ds = build_datasets(
-        train_df, val_df, test_df, cfg["input_steps"], cfg["horizon"]
+        train_df, val_df, test_df, lookback, cfg["horizon"]
     )
+    # An empty training set here is silent otherwise: the loader yields no
+    # batches and every epoch reports a loss of 0.0. Easy to hit now that
+    # --jepa-window drives the lookback well past --input-steps.
+    if len(train_ds) == 0:
+        raise typer.BadParameter(
+            f"No training windows: every series is shorter than "
+            f"{lookback + cfg['horizon']} rows (lookback {lookback} + horizon "
+            f"{cfg['horizon']}). Lower --jepa-window, or train on longer series."
+        )
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_name = f"sugar_jepa_global_h{cfg['horizon']}_{ts}"
 
@@ -344,7 +371,7 @@ def main(
     study_groups: str = typer.Option("", help="Comma-separated Study Group filter (empty = all)."),
     split_scheme: str = typer.Option("classic", help="classic | trainval_test_as_val."),
     horizon: int = typer.Option(12, help="Prediction horizon steps (12 = 60 min at 5-min freq)."),
-    input_steps: int = typer.Option(128, help="Input window steps — shared by the model AND the JEPA branch."),
+    input_steps: int = typer.Option(128, help="Backbone input window steps."),
     d_model: int = typer.Option(32, help="Embedding dimension."),
     n_heads: int = typer.Option(8, help="Attention heads."),
     n_blocks: int = typer.Option(5, help="Parallel transformer blocks."),
@@ -368,7 +395,13 @@ def main(
     eval_batch_log_every: int = typer.Option(300, help="Log eval progress every N batches (0 = off)."),
     # --- JEPA branch ---------------------------------------------------------
     # The branch fuses as a 4th cross-attention auxiliary (K/V = patch embeddings).
-    jepa_patch_size: int = typer.Option(8, help="Steps per JEPA patch; input_steps must divide by it."),
+    jepa_window: int = typer.Option(
+        288,
+        help="Glucose-only lookback for the JEPA branch (288 = 24h at 5-min). Must match the "
+             "--window the encoder was pretrained at. Independent of --input-steps; when longer, "
+             "the dataset window grows to it and short series drop out.",
+    ),
+    jepa_patch_size: int = typer.Option(8, help="Steps per JEPA patch; jepa_window must divide by it."),
     jepa_embed_dim: int = typer.Option(96, help="JEPA encoder width."),
     jepa_layers: int = typer.Option(3, help="JEPA encoder blocks."),
     jepa_heads: int = typer.Option(6, help="JEPA encoder attention heads."),
@@ -381,9 +414,9 @@ def main(
 ) -> None:
     """Train SugarJepa (global mode only) — SugarOne + our own JEPA glucose encoder."""
     # Fail before the (slow) CSV load rather than at model construction.
-    if input_steps % jepa_patch_size != 0:
+    if jepa_window % jepa_patch_size != 0:
         raise typer.BadParameter(
-            f"--input-steps ({input_steps}) must be divisible by "
+            f"--jepa-window ({jepa_window}) must be divisible by "
             f"--jepa-patch-size ({jepa_patch_size})."
         )
 
@@ -455,6 +488,7 @@ def main(
         "log_every": log_every, "ckpt_every_n_epochs": ckpt_every_n_epochs,
         "val_every_n_epochs": val_every_n_epochs, "resume_from": resume_from,
         "batch_log_every": batch_log_every, "eval_batch_log_every": eval_batch_log_every,
+        "jepa_window": jepa_window,
         "jepa_patch_size": jepa_patch_size, "jepa_embed_dim": jepa_embed_dim,
         "jepa_layers": jepa_layers, "jepa_heads": jepa_heads,
         "jepa_norm": jepa_norm, "jepa_lr": jepa_lr, "jepa_init": jepa_init,

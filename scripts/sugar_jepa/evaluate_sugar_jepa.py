@@ -8,10 +8,11 @@ existing, shared evaluation code. Reuses the model-reconstruction pattern from
 evaluate_model.py (scripts/common/registry.py) and the training script's
 dataset/eval/metrics functions.
 
-Evaluates `SugarJepaModel2` — the 128-step model whose JEPA branch reads its
-glucose from `x[..., 0]`. Its dataset contract is SugarOne's plain `(x, y)`, so
-there is no separate jepa_window, no fifth scaler, and no extra tensor in the
-eval loop.
+Evaluates `SugarJepaModel2`, whose JEPA branch reads its glucose from the
+trailing `jepa_window` steps of `x[..., 0]`. The dataset contract is SugarOne's
+plain `(x, y)` — one window of `max(input_steps, jepa_window)` steps, no fifth
+scaler, no extra tensor in the eval loop — so the only thing the two windows
+change here is how long that window is.
 """
 from __future__ import annotations
 
@@ -79,6 +80,8 @@ def main(
         n_blocks=cfg["n_blocks"],
         prediction_horizon=cfg["horizon"],
         dropout=cfg["dropout"],
+        # Older runs predate the separate window and used input_steps for both.
+        jepa_window=cfg.get("jepa_window", cfg["input_steps"]),
         jepa_patch_size=cfg.get("jepa_patch_size", 8),
         jepa_embed_dim=cfg.get("jepa_embed_dim", 96),
         jepa_layers=cfg.get("jepa_layers", 3),
@@ -98,8 +101,10 @@ def main(
     train_df = _common_impute_and_sort(
         train_df, ffill_bfill_columns=["glucose", "basal"], zero_fill_columns=["bolus", "carbs"],
     )
+    # The window the dataset must emit is the model's, not the backbone's.
+    lookback = max(cfg["input_steps"], cfg.get("jepa_window", cfg["input_steps"]))
     train_ds = SugarJepaWindowDataset(
-        train_df, cfg["input_steps"], cfg["horizon"], fit_scalers=True,
+        train_df, lookback, cfg["horizon"], fit_scalers=True,
     )
 
     test_train_df, test_val_df, test_test_df = load_splits_streaming(
@@ -121,7 +126,7 @@ def main(
     )
 
     eval_ds = SugarJepaWindowDataset(
-        eval_df, cfg["input_steps"], cfg["horizon"],
+        eval_df, lookback, cfg["horizon"],
         scaler_glucose=train_ds.scaler_glucose,
         scaler_basal=train_ds.scaler_basal,
         scaler_bolus=train_ds.scaler_bolus,

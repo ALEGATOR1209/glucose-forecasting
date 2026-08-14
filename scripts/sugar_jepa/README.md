@@ -9,9 +9,22 @@ positions, pre-norm blocks — trained by us, either end-to-end from random init
 checkpoint we produce ourselves with [`jepa_pretrain.py`](jepa_pretrain.py). No `from_pretrained`, no
 `safetensors`, no network.
 
-The JEPA branch reads its glucose from `x[..., 0]` — the **same 128-step lookback** the rest of the model
-sees — so the dataset contract stays SugarOne's plain `(x, y)`: no second tensor, no second scaler, no
-separate window. Every series long enough for SugarOne is long enough for SugarJepa.
+The JEPA branch reads a **longer glucose-only lookback** than the backbone (`--jepa-window`, default 288 =
+24h; the backbone stays at `--input-steps`, default 128). Both views end at the same instant, so the
+dataset emits ONE window of `max(input_steps, jepa_window)` steps and the model takes the trailing slice
+each branch needs:
+
+```
+x            |<-------------- lookback = 288 -------------->| now
+JEPA branch  |<-------------- jepa_window = 288 ----------->|
+backbone                     |<-- input_steps = 128 ------->|
+```
+
+The dataset contract therefore stays SugarOne's plain `(x, y)` — no second tensor, no second scaler, no
+bespoke training loop — and `SugarOneWindowDataset` is used as-is, just built at the longer lookback. The
+cost is that series shorter than `lookback + horizon` (300 rows by default) contribute **no windows**, so
+SugarJepa is evaluated on a population enriched for longer series relative to SugarOne. Set
+`--jepa-window` equal to `--input-steps` to get the old single-window behaviour back.
 
 Scope: `global` training mode only.
 
@@ -26,7 +39,7 @@ uv run python scripts/sugar_jepa/train_sugar_jepa.py \
   --d-model 32 --n-heads 8 --n-blocks 5 --ff-units 128 --input-steps 128 --horizon 12 \
   --lr 0.0004 --weight-decay 0.00003 --batch-size 256 \
   --epochs 30 --patience 3 --val-every-n-epochs 5 --num-workers 0 \
-  --jepa-patch-size 8 --jepa-embed-dim 96 --jepa-layers 3 --jepa-heads 6 --jepa-lr 4e-5 \
+  --jepa-window 288 --jepa-patch-size 8 --jepa-embed-dim 96 --jepa-layers 3 --jepa-heads 6 --jepa-lr 4e-5 \
   --out-dir runs/sugar_jepa
 ```
 
@@ -41,21 +54,31 @@ Training 367,840 out of 367,840 SugarOne params @ lr=0.0004
 Training 336,576 out of 336,576 JEPA params @ lr=4e-05
 ```
 
-`input_steps` must be divisible by `jepa_patch_size` (128 / 8 = 16 patches of 40 min); it fails up front
-if not.
+`jepa_window` must be divisible by `jepa_patch_size` (288 / 8 = 36 patches of 40 min); it fails up front
+if not. `input_steps` is unconstrained — the backbone does not patchify.
 
 ### 2. Pretrain the encoder (JEPA self-supervision)
 
 ```bash
 uv run python scripts/sugar_jepa/jepa_pretrain.py \
-  --csv data/loop_and_ai_ready/loop_ai_ready_joined2_dev.csv --device cuda \
-  --window-stride 4 --epochs 50 --batch-size 256 \
+  --csv data/input/loop_and_ai_ready/loop_ai_ready_joined2_dev.csv --device cuda \
+  --window 288 --window-stride 4 --epochs 50 --batch-size 256 \
   --patch-size 8 --embed-dim 96 --n-layers 3 --n-heads 6
 ```
 
-Masked latent prediction: an EMA target encoder encodes all 16 patches, the context encoder sees only the
+Masked latent prediction: an EMA target encoder encodes all 36 patches, the context encoder sees only the
 unmasked ones, and a narrow predictor — given just the *positions* of the masked blocks — must reproduce
 their latents. Loss is smooth-L1 **in latent space**; nothing reconstructs glucose values.
+
+`--window` is the JEPA branch's own lookback (default 288 = 24h), independent of the forecaster's
+`--input-steps` and matched by `--jepa-window` at fine-tune. Target-block sizes default to a *fraction*
+of the patch sequence (`n_patches/8` to `n_patches/4`), so changing the window keeps the masked fraction
+at ~44-100% instead of silently making the objective easier; pass `--min-block`/`--max-block` to override.
+
+An encoder pretrained at one window does not transfer for free to another: attention was trained over
+that many patches, and the per-window z-score is computed over that span. Re-pretrain, or warm-start with
+`--init-from <encoder.pt>`, which copies every learned tensor and regenerates only the sinusoidal position
+buffer (the one shape that depends on window length). It refuses checkpoints that differ in any other way.
 
 Trains on the CSV's **train split only**. Val/test rows never enter this stage, or every forecasting number
 downstream is leakage-contaminated. A slice of the *train* series (`--holdout-frac`) is held out to watch
@@ -67,7 +90,7 @@ cannot silently overwrite the encoder an already-fine-tuned model was initialize
 ```
 runs/jepa_encoder/
 ├── latest.txt                                       # points at the most recent run
-└── jepa_encoder_w128_p8_d96_l3_h6_20260715_002330/
+└── jepa_encoder_w288_p8_d96_l3_h6_20260715_002330/
     ├── config.json           # the SSL config + final latent_std / eff_rank
     ├── encoder.pt            # last epoch — this is what --jepa-init loads
     ├── encoder_best.pt       # lowest holdout loss
@@ -75,9 +98,9 @@ runs/jepa_encoder/
     └── plots/epoch_001.png … # 4-panel encoder diagnostics
 ```
 
-The directory name carries the encoder shape (`w128_p8_d96_l3_h6` = window / patch / dim / layers /
+The directory name carries the encoder shape (`w288_p8_d96_l3_h6` = window / patch / dim / layers /
 heads), because those must match the fine-tuning config exactly — the `--jepa-init` load is
-`strict=True`.
+`strict=True`, and `w` must equal `--jepa-window`.
 
 **Watch `latent_std` and `eff_rank`, not the loss.** Representation collapse — the encoder emitting nearly
 the same vector for every window — drives the loss toward zero and looks like a triumph. Both are logged
@@ -88,7 +111,8 @@ in progress, and below ~0.1 the run is dead.
 Then fine-tune from it — same command as (1), plus:
 
 ```bash
-  --jepa-init runs/jepa_encoder/jepa_encoder_w128_p8_d96_l3_h6_<timestamp>/encoder.pt
+  --jepa-window 288 \
+  --jepa-init runs/jepa_encoder/jepa_encoder_w288_p8_d96_l3_h6_<timestamp>/encoder.pt
 ```
 
 Encoder weights only; `jepa_proj` and the backbone stay randomly initialized. The load is `strict=True`, so
@@ -134,15 +158,16 @@ uv run python scripts/sugar_jepa/train_sugar_jepa.py \
   --csv data/loop_and_ai_ready/loop_ai_ready_joined2_dev.csv \
 ```
 
-`tests/test_sugar_jepa_smoke.py` is **stale and failing** — it tests the retired 288-step dataset. Rewrite
-or delete it when the old path goes.
+`tests/test_sugar_jepa_smoke.py` covers both models: the retired frozen CGM-JEPA `SugarJepaModel` (still
+in the module, still loadable) and `SugarJepaModel2`'s two-window slicing.
 
 ## What's different from SugarOne
 
 - `CrossAttentionSugarJepaBlock` mixes **4** auxiliaries via a learnable softmax weight, vs. SugarOne's
   3-way mix.
-- `JepaEncoder` encodes the same 128-step glucose window into 16 patch embeddings (dim 96), projected to
-  `d_model` by `jepa_proj` to serve as the 4th K/V stream.
+- `JepaEncoder` encodes a **288-step** glucose window — longer than the backbone's 128 — into 36 patch
+  embeddings (dim 96), projected to `d_model` by `jepa_proj` to serve as the 4th K/V stream. The K/V
+  sequence is therefore a different length from the query, which cross-attention allows.
 - The encoder **instance-normalizes each window** (per-window z-score) inside its own forward pass. A
   z-score is invariant to affine maps, and MinMax scaling is affine — so an encoder pretrained on raw
   mg/dL sees an identical input distribution when fine-tuned on MinMax-scaled `x[..., 0]`. That is what

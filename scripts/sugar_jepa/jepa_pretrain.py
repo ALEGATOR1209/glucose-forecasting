@@ -2,7 +2,8 @@
 """
 Self-supervised pretraining for `JepaEncoder` (Stage B, part 1).
 
-The JEPA recipe, scaled down to a 128-step / 16-patch glucose window:
+The JEPA recipe, scaled down to a short glucose window (default 288 steps = 24h
+at 5-min sampling, 36 patches of 8):
 
   context encoder  E_theta   = JepaEncoder                     (trains)
   target encoder   E_xi      = EMA copy of E_theta             (no grad)
@@ -33,8 +34,15 @@ the same vector for every window) drives this loss toward zero and looks like a
 triumph. `latent_std` and `eff_rank` are logged every epoch for exactly that
 reason; a run whose std flat-lines near zero is dead, and its encoder is noise.
 
+Window length: `--window` is the JEPA branch's OWN lookback and does not have to
+equal the forecaster's `--input-steps`. It must match `--jepa-window` at
+fine-tune time, because a checkpoint pretrained at one length carries attention
+tuned for that many patches and a per-window z-score computed over that span.
+`--init-from` warm-starts across lengths (see `load_encoder_init`) when a full
+re-pretrain is too expensive.
+
 Output: one timestamped directory per run, like the trainers —
-`runs/jepa_encoder/jepa_encoder_w128_p8_d96_l3_h6_<timestamp>/` holding
+`runs/jepa_encoder/jepa_encoder_w288_p8_d96_l3_h6_<timestamp>/` holding
 {config.json, encoder.pt, encoder_best.pt, pretrain_metrics.csv, plots/}. A
 `latest.txt` in the parent names the most recent run. `encoder.pt` is a plain
 state_dict that loads into SugarJepaModel2.jepa_encoder via
@@ -120,8 +128,68 @@ class GlucoseWindowDataset(Dataset):
 
 
 # ============================================================================
-#  MASKING — I-JEPA multi-block, scaled down to a 16-patch sequence
+#  MASKING — I-JEPA multi-block, scaled down to a short patch sequence
 # ============================================================================
+
+def resolve_block_sizes(n_patches: int, min_block: int, max_block: int) -> tuple[int, int]:
+    """Fill in `min_block`/`max_block` (<=0 meaning "auto") as a FRACTION of the
+    sequence, so the masking ratio is the same at any window length.
+
+    The old fixed 2/4 defaults were chosen for a 16-patch sequence, where 4 blocks
+    cover 50-100% of it. Reused unchanged at 36 patches (288 steps / 8) the same
+    numbers mask only 22-44% — a materially easier objective, arrived at silently
+    by changing an unrelated flag. The 1/8-to-1/4 rule below reproduces 2/4 exactly
+    at 16 patches and gives 4/9 at 36.
+    """
+    if min_block <= 0:
+        min_block = max(2, round(n_patches * 0.125))
+    if max_block <= 0:
+        max_block = max(min_block, round(n_patches * 0.25))
+    return min_block, max_block
+
+
+# ============================================================================
+#  WARM START — reusing an encoder pretrained at another window length
+# ============================================================================
+
+def load_encoder_init(encoder: JepaEncoder, path: Path, device: torch.device) -> int:
+    """Warm-start `encoder` from a checkpoint pretrained at a DIFFERENT window length.
+
+    Every learned tensor in JepaEncoder is length-agnostic — the Conv1d patch
+    embedding, the attention blocks, the final LayerNorm. The one exception is
+    `pos_enc.pe`, a sinusoidal buffer sized to n_patches: it is analytic rather than
+    learned, so it is regenerated at the new length instead of copied. A strict load
+    fails on that buffer's shape alone, which is why this helper exists.
+
+    Anything else that mismatches is a real incompatibility (patch_size, embed_dim,
+    n_layers, n_heads all change weight shapes) and raises rather than silently
+    loading a partial encoder. Returns the number of tensors copied.
+    """
+    state = torch.load(path, map_location=device, weights_only=True)
+    own = encoder.state_dict()
+    resized = [k for k, v in state.items() if k in own and own[k].shape != v.shape]
+
+    hard = [k for k in resized if k != "pos_enc.pe"]
+    if hard:
+        raise typer.BadParameter(
+            f"--init-from {path} is not shape-compatible: {hard}. "
+            "--patch-size / --embed-dim / --n-layers / --n-heads must match the checkpoint."
+        )
+
+    filtered = {k: v for k, v in state.items() if k not in resized}
+    result = encoder.load_state_dict(filtered, strict=False)
+    missing = [k for k in result.missing_keys if k not in resized]
+    if missing or result.unexpected_keys:
+        raise typer.BadParameter(
+            f"--init-from {path} does not match this encoder — "
+            f"missing {missing}, unexpected {list(result.unexpected_keys)}."
+        )
+
+    echo_plain(
+        f"  Warm-started {len(filtered)} tensors from {path}"
+        + (f"; regenerated {resized} at the new window length" if resized else "")
+    )
+    return len(filtered)
 
 def sample_block_mask(
     n_patches: int,
@@ -361,11 +429,22 @@ def main(
         4, help="Sliding-window stride. >1 cuts the huge overlap between adjacent windows."
     ),
     # --- encoder (must match the forecaster it will initialise) --------------
-    input_steps: int = typer.Option(128, help="Window steps — must match --input-steps at fine-tune."),
-    patch_size: int = typer.Option(8, help="Steps per patch; input_steps must divide by it."),
+    window: int = typer.Option(
+        288, "--window", "--input-steps",
+        help="Glucose window steps fed to the encoder (288 = 24h at 5-min). This is the "
+             "JEPA branch's OWN lookback and must match --jepa-window at fine-tune; it is "
+             "independent of the forecaster's --input-steps.",
+    ),
+    patch_size: int = typer.Option(8, help="Steps per patch; window must divide by it."),
     embed_dim: int = typer.Option(96, help="Encoder width."),
     n_layers: int = typer.Option(3, help="Encoder blocks."),
     n_heads: int = typer.Option(6, help="Encoder attention heads."),
+    init_from: str = typer.Option(
+        "",
+        help="Warm-start from an encoder.pt pretrained at a DIFFERENT window length "
+             "(the sinusoidal position buffer is regenerated). Everything else about the "
+             "encoder must match. Empty = random init.",
+    ),
     # --- SSL objective -------------------------------------------------------
     n_targets: int = typer.Option(
         4,
@@ -373,8 +452,13 @@ def main(
              "per batch and shared by every sequence in it (as in I-JEPA), which keeps "
              "the context/target tensors rectangular.",
     ),
-    min_block: int = typer.Option(2, help="Min patches per target block."),
-    max_block: int = typer.Option(4, help="Max patches per target block."),
+    min_block: int = typer.Option(
+        0, help="Min patches per target block (0 = auto, n_patches/8 — keeps the masking "
+                "ratio constant as --window changes)."
+    ),
+    max_block: int = typer.Option(
+        0, help="Max patches per target block (0 = auto, n_patches/4)."
+    ),
     pred_dim: int = typer.Option(0, help="Predictor width (0 = embed_dim // 2)."),
     pred_layers: int = typer.Option(2, help="Predictor blocks."),
     pred_heads: int = typer.Option(4, help="Predictor attention heads."),
@@ -417,11 +501,12 @@ def main(
     ),
 ) -> None:
     """Pretrain JepaEncoder with the JEPA objective on the CSV's TRAIN split."""
-    if input_steps % patch_size != 0:
+    if window % patch_size != 0:
         raise typer.BadParameter(
-            f"--input-steps ({input_steps}) must be divisible by --patch-size ({patch_size})."
+            f"--window ({window}) must be divisible by --patch-size ({patch_size})."
         )
-    n_patches = input_steps // patch_size
+    n_patches = window // patch_size
+    min_block, max_block = resolve_block_sizes(n_patches, min_block, max_block)
     if max_block > n_patches or min_block > max_block:
         raise typer.BadParameter(
             f"Need min_block <= max_block <= n_patches ({n_patches})."
@@ -435,7 +520,16 @@ def main(
         typer.echo("CUDA not available, falling back to CPU.")
         device_name = "cpu"
     device = torch.device(device_name)
-    typer.echo(f"Device: {device} | {n_patches} patches of {patch_size} steps")
+    typer.echo(
+        f"Device: {device} | window {window} = {n_patches} patches of {patch_size} steps"
+    )
+    # Printed because the masked fraction is the objective's difficulty, and with
+    # auto block sizes it is no longer readable off the flags alone.
+    typer.echo(
+        f"Masking: {n_targets} blocks of {min_block}-{max_block} patches "
+        f"({n_targets * min_block / n_patches:.0%}-"
+        f"{min(n_targets * max_block, n_patches) / n_patches:.0%} of the sequence)"
+    )
 
     # --- data: TRAIN SPLIT ONLY. val/test never enter the SSL stage. ---------
     train_df, _val_df, _test_df = load_splits_streaming(csv, unique_id, drop_interpolated)
@@ -450,11 +544,11 @@ def main(
     holdout_ids, fit_ids = series[:n_holdout], series[n_holdout:]
 
     fit_ds = GlucoseWindowDataset(
-        train_df.filter(pl.col("unique_id").is_in(fit_ids)), input_steps, window_stride
+        train_df.filter(pl.col("unique_id").is_in(fit_ids)), window, window_stride
     )
     hold_ds = (
         GlucoseWindowDataset(
-            train_df.filter(pl.col("unique_id").is_in(holdout_ids)), input_steps, window_stride
+            train_df.filter(pl.col("unique_id").is_in(holdout_ids)), window, window_stride
         )
         if n_holdout
         else None
@@ -464,7 +558,7 @@ def main(
         f"holdout={len(hold_ds) if hold_ds else 0:,} ({n_holdout} series)"
     )
     if len(fit_ds) == 0:
-        raise typer.BadParameter("No SSL windows — series are shorter than --input-steps.")
+        raise typer.BadParameter(f"No SSL windows — every series is shorter than {window} steps.")
 
     workers = resolve_num_workers(num_workers, device)
     fit_loader = DataLoader(
@@ -488,10 +582,13 @@ def main(
 
     # --- model ---------------------------------------------------------------
     enc_kwargs = dict(
-        n_time_steps=input_steps, patch_size=patch_size, embed_dim=embed_dim,
+        n_time_steps=window, patch_size=patch_size, embed_dim=embed_dim,
         n_layers=n_layers, n_heads=n_heads,
     )
     encoder = JepaEncoder(**enc_kwargs).to(device)
+    if init_from:
+        # Before the deepcopy below, so the EMA target starts from the same weights.
+        load_encoder_init(encoder, Path(init_from), device)
     target_encoder = copy.deepcopy(encoder).to(device)
     for p in target_encoder.parameters():
         p.requires_grad = False
@@ -524,7 +621,7 @@ def main(
     # model was initialised from. Mirrors the trainers' runs/<name>_<ts>/ layout.
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = out_dir / (
-        f"jepa_encoder_w{input_steps}_p{patch_size}_d{embed_dim}"
+        f"jepa_encoder_w{window}_p{patch_size}_d{embed_dim}"
         f"_l{n_layers}_h{n_heads}_{ts}"
     )
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -537,6 +634,9 @@ def main(
         "ema_base": ema_base, "epochs": epochs, "batch_size": batch_size, "lr": lr,
         "weight_decay": weight_decay, "warmup_epochs": warmup_epochs,
         "window_stride": window_stride, "csv": str(csv), "split": "train-only",
+        # Provenance: a warm-started encoder is not the same artifact as a
+        # from-scratch one, and nothing else in the run dir would record it.
+        "init_from": init_from or None,
         "holdout_frac": holdout_frac, "seed": seed,
         "fit_windows": len(fit_ds), "holdout_windows": len(hold_ds) if hold_ds else 0,
         "start_time": datetime.now().isoformat(),
@@ -761,7 +861,7 @@ def main(
     typer.echo(
         "\nFine-tune with:\n"
         f"  uv run python scripts/sugar_jepa/train_sugar_jepa.py --csv {csv} "
-        f"--input-steps {input_steps} --jepa-patch-size {patch_size} "
+        f"--jepa-window {window} --jepa-patch-size {patch_size} "
         f"--jepa-embed-dim {embed_dim} --jepa-layers {n_layers} --jepa-heads {n_heads} "
         f"--jepa-init {run_dir / recommended}"
     )

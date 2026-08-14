@@ -123,7 +123,7 @@ def _eval_one_split(
     model = _build_model(kind, meta)
     _load_model_weights(model, ckpt_path, device)
 
-    y_true_scaled, y_pred_scaled = _run_inference(model, loader, device, kind)
+    y_true_scaled, y_pred_scaled = _run_inference(model, loader, device)
 
     y_true = train_ds.scaler_glucose.inverse_transform(
         y_true_scaled.ravel().reshape(-1, 1)
@@ -286,17 +286,27 @@ def _resolve_csv_path(raw: str, fallback: Path) -> Path:
     return fallback
 
 
+def _lookback(meta: dict) -> int:
+    """Steps a single dataset window must hold.
+
+    SugarJepa's JEPA branch may read a longer glucose-only window than the
+    backbone; both are trailing slices of one window this long. Every other model
+    reads exactly input_steps.
+    """
+    input_steps = meta.get("input_steps", 128)
+    return max(input_steps, meta.get("jepa_window", input_steps))
+
+
 def _build_train_dataset(df: pl.DataFrame, kind: ModelKind, meta: dict):
     """Build a dataset with ``fit_scalers=True`` to train scalers."""
     input_steps = meta.get("input_steps", 128)
     horizon = meta.get("horizon", 12)
 
     if kind == "sugar_jepa":
-        from scripts.sugar_jepa.train_sugar_jepa import SugarJepaWindowDataset
-        return SugarJepaWindowDataset(
-            df, input_steps=input_steps, horizon=horizon,
-            jepa_window=meta.get("jepa_window", 288),
-            fit_scalers=True,
+        # SugarJepa's dataset IS SugarOne's, just built at the longer lookback.
+        from glucose_forecasting.data.sugar_one import SugarOneWindowDataset
+        return SugarOneWindowDataset(
+            df, input_steps=_lookback(meta), horizon=horizon, fit_scalers=True,
         )
     if kind == "sugar_one":
         from glucose_forecasting.data.sugar_one import SugarOneWindowDataset
@@ -315,15 +325,13 @@ def _build_eval_dataset(df: pl.DataFrame, train_ds, kind: ModelKind, meta: dict)
     horizon = meta.get("horizon", 12)
 
     if kind == "sugar_jepa":
-        from scripts.sugar_jepa.train_sugar_jepa import SugarJepaWindowDataset
-        return SugarJepaWindowDataset(
-            df, input_steps=input_steps, horizon=horizon,
-            jepa_window=meta.get("jepa_window", 288),
+        from glucose_forecasting.data.sugar_one import SugarOneWindowDataset
+        return SugarOneWindowDataset(
+            df, input_steps=_lookback(meta), horizon=horizon,
             scaler_glucose=train_ds.scaler_glucose,
             scaler_basal=train_ds.scaler_basal,
             scaler_bolus=train_ds.scaler_bolus,
             scaler_carbs=train_ds.scaler_carbs,
-            scaler_glucose_jepa=train_ds.scaler_glucose_jepa,
             fit_scalers=False,
         )
     if kind == "sugar_one":
@@ -357,13 +365,25 @@ def _build_model(kind: ModelKind, meta: dict) -> nn.Module:
         dropout=meta.get("dropout", 0.1),
     )
     if kind == "sugar_jepa":
-        from scripts.sugar_jepa.sugar_jepa_model import SugarJepaModel
-        return SugarJepaModel(
+        # `jepa_weights_dir` only ever appears in metas from the retired frozen
+        # CGM-JEPA model, whose 3-tensor dataset no longer exists. Refusing beats
+        # loading those weights into a differently-shaped model.
+        if "jepa_weights_dir" in meta:
+            raise ValueError(
+                "This run predates the current SugarJepa model (it used the vendored "
+                "frozen CGM-JEPA encoder and a 3-tensor dataset that has since been "
+                "removed). Re-train, or evaluate it with the code at commit a705aa3."
+            )
+        from scripts.sugar_jepa.sugar_jepa_model import SugarJepaModel2
+        return SugarJepaModel2(
             **common,
             n_features=4,
-            jepa_weights_dir=meta.get("jepa_weights_dir", "scripts/sugar_jepa/pretrained/cgm_jepa"),
-            jepa_patch_size=meta.get("jepa_patch_size", 12),
-            jepa_freeze=not meta.get("finetune_jepa", False),
+            jepa_window=meta.get("jepa_window", common["n_time_steps"]),
+            jepa_patch_size=meta.get("jepa_patch_size", 8),
+            jepa_embed_dim=meta.get("jepa_embed_dim", 96),
+            jepa_layers=meta.get("jepa_layers", 3),
+            jepa_heads=meta.get("jepa_heads", 6),
+            jepa_norm=meta.get("jepa_norm", "instance"),
         )
     if kind == "sugar_one":
         from glucose_forecasting.models.sugar_one import SugarOneModel
@@ -385,9 +405,9 @@ def _run_inference(
     model: nn.Module,
     loader: DataLoader,
     device: str,
-    kind: ModelKind,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Run inference, handling both 2-tensor and 3-tensor (SugarJEPA) batches."""
+    """Run inference. Every model kind now uses a 2-tensor `(x, y)` batch —
+    SugarJepa's second window is a slice of `x` taken inside the model."""
     model.eval()
     device_t = torch.device(device)
     all_true: list[np.ndarray] = []
@@ -396,14 +416,9 @@ def _run_inference(
     n_total = len(loader)
 
     for batch_idx, batch in enumerate(loader, start=1):
-        if kind == "sugar_jepa":
-            x, jepa, y = batch
-            x, jepa, y = x.to(device_t), jepa.to(device_t), y.to(device_t)
-            pred = model(x, jepa)
-        else:
-            x, y = batch
-            x, y = x.to(device_t), y.to(device_t)
-            pred = model(x)
+        x, y = batch
+        x, y = x.to(device_t), y.to(device_t)
+        pred = model(x)
         all_true.append(y.float().cpu().numpy())
         all_pred.append(pred.float().cpu().numpy())
 

@@ -61,8 +61,15 @@ batch_log_every = 200
 eval_batch_log_every = 300
 
 [jepa]
-weights_dir = "scripts/sugar_jepa/pretrained/cgm_jepa"
+# Our own encoder (jepa_pretrain.py), not the retired vendored CGM-JEPA — hence
+# no weights_dir, and no `finetune` flag: the encoder always trains, at its own lr.
+# `window` must equal the --window the --jepa-init checkpoint was pretrained at,
+# and must be divisible by patch_size (288 / 8 = 36 patches).
 window = 288
-patch_size = 12
-finetune = false
+patch_size = 8
+embed_dim = 96
+layers = 3
+heads = 6
+norm = "instance"
 lr = 0.00004
+init = "runs/jepa_encoder/jepa_encoder_w288_p8_d96_l3_h6_<timestamp>/encoder_best.pt"

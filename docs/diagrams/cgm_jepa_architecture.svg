@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="1400" viewBox="0 0 920 1400">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+    <marker id="arrg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#999"/>
+    </marker>
+    <linearGradient id="cgm" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#7fb2e5"/>
+      <stop offset="25%"  stop-color="#8fd0c0"/>
+      <stop offset="50%"  stop-color="#f2d98a"/>
+      <stop offset="75%"  stop-color="#ef9c78"/>
+      <stop offset="100%" stop-color="#d96a6a"/>
+    </linearGradient>
+    <style>
+      text { font-family: "Latin Modern Roman", "Times New Roman", Times, serif; fill: #111; }
+      .lbl  { font-size: 15px; text-anchor: middle; }
+      .sub  { font-size: 12.5px; text-anchor: middle; fill: #444; }
+      .dim  { font-size: 12.5px; font-style: italic; fill: #555; }
+      .dimc { font-size: 12.5px; font-style: italic; fill: #555; text-anchor: middle; }
+      .grplbl { font-size: 15px; font-style: italic; fill: #333; }
+      .big  { font-size: 18px; text-anchor: middle; }
+      .box  { stroke: #333; stroke-width: 1.2; }
+      .grp  { fill: none; stroke: #444; stroke-width: 1.2; stroke-dasharray: 7 4; }
+      .dead { stroke: #999; stroke-width: 1.1; stroke-dasharray: 5 3; fill: #ececec; }
+      .deadt{ font-size: 13px; text-anchor: middle; fill: #666; }
+      .deads{ font-size: 11.5px; text-anchor: middle; fill: #777; }
+      .ln   { stroke: #333; stroke-width: 1.4; fill: none; }
+      .lng  { stroke: #999; stroke-width: 1.2; fill: none; stroke-dasharray: 5 3; }
+    </style>
+  </defs>
+
+  <rect width="920" height="1400" fill="#ffffff"/>
+
+  <!-- legend -->
+  <g>
+    <rect x="655" y="42" width="16" height="12" class="box" fill="#f2b8b0"/>
+    <text x="679" y="52" class="dim">attention / conv</text>
+    <rect x="655" y="64" width="16" height="12" class="box" fill="#f7e3a8"/>
+    <text x="679" y="74" class="dim">linear / MLP</text>
+    <rect x="655" y="86" width="16" height="12" class="box" fill="#cfe6bf"/>
+    <text x="679" y="96" class="dim">positional embedding</text>
+    <rect x="655" y="108" width="16" height="12" class="box" fill="#b8dcef"/>
+    <text x="679" y="118" class="dim">added by this repo</text>
+    <rect x="655" y="130" width="16" height="12" class="dead"/>
+    <text x="679" y="140" class="dim">in checkpoint, not executed</text>
+  </g>
+
+  <!-- ===== OUTPUT ===== -->
+  <text x="410" y="46" class="big">K / V stream for the 4th cross-attention head</text>
+  <text x="410" y="68" class="dimc">(24, B, 32)   →   into SugarJepa</text>
+  <line x1="410" y1="112" x2="410" y2="78" class="ln" marker-end="url(#arr)"/>
+
+  <rect x="190" y="112" width="440" height="56" rx="3" class="box" fill="#b8dcef" stroke-dasharray="6 3"/>
+  <text x="410" y="136" class="lbl">JepaEncoderWrapper.proj : Linear(96 → 32)</text>
+  <text x="410" y="156" class="sub">→ permute → (24, B, 32)   ·   not part of CGM-JEPA</text>
+
+  <line x1="410" y1="240" x2="410" y2="172" class="ln" marker-end="url(#arr)"/>
+  <text x="422" y="212" class="dim">hidden : (B, 24, 96)</text>
+
+  <!-- unused SSL projection head -->
+  <path d="M 630 265 L 690 265 L 690 300" class="lng" marker-end="url(#arrg)"/>
+  <rect x="655" y="300" width="235" height="76" rx="3" class="dead"/>
+  <text x="772" y="324" class="deadt">proj : MLP(96 → 1024 → 48)</text>
+  <text x="772" y="343" class="deads">(B, 24, 48)  —  returned but discarded</text>
+  <text x="772" y="361" class="deads">SSL projection head, unused here</text>
+
+  <rect x="190" y="240" width="440" height="50" rx="3" class="box" fill="#e8eef5"/>
+  <text x="410" y="270" class="lbl">encoder_norm : LayerNorm(96)</text>
+
+  <line x1="410" y1="340" x2="410" y2="294" class="ln" marker-end="url(#arr)"/>
+  <text x="422" y="322" class="dim">(B, 24, 96)</text>
+
+  <!-- ===== ENCODER BLOCKS ===== -->
+  <rect x="95" y="340" width="535" height="300" class="grp"/>
+  <text x="112" y="364" class="grplbl">predictor_blocks  × 3   (pre-norm transformer)</text>
+
+  <path d="M 95 450 L 55 450 L 55 590 L 95 590" class="ln" marker-end="url(#arr)"/>
+  <text x="38" y="524" class="dimc">× 3</text>
+
+  <rect x="125" y="390" width="475" height="70" rx="3" class="box" fill="#f7e3a8"/>
+  <text x="362" y="415" class="lbl">norm2 : LayerNorm(96)   →   MLP</text>
+  <text x="362" y="435" class="sub">Linear(96 → 384) → GELU → Linear(384 → 96)      mlp_ratio = 4</text>
+  <text x="362" y="453" class="sub">⊕ residual   →   (B, 24, 96)</text>
+
+  <line x1="362" y1="530" x2="362" y2="464" class="ln" marker-end="url(#arr)"/>
+
+  <rect x="125" y="530" width="475" height="80" rx="3" class="box" fill="#f2b8b0"/>
+  <text x="362" y="555" class="lbl">norm1 : LayerNorm(96)   →   MultiHeadAttention</text>
+  <text x="362" y="575" class="sub">dim = 96,  6 heads  (head_dim 16)</text>
+  <text x="362" y="593" class="sub">qkv Linear(96 → 288),  proj Linear(96 → 96)   ⊕ residual</text>
+
+  <line x1="410" y1="700" x2="410" y2="644" class="ln" marker-end="url(#arr)"/>
+
+  <!-- ===== MASK (skipped) ===== -->
+  <rect x="190" y="700" width="440" height="52" rx="3" class="dead"/>
+  <text x="410" y="724" class="deadt">apply_mask ( x, mask )</text>
+  <text x="410" y="742" class="deads">skipped — config jepa = False, wrapper passes mask = None</text>
+
+  <line x1="410" y1="800" x2="410" y2="756" class="ln" marker-end="url(#arr)"/>
+  <text x="422" y="784" class="dim">(B, 24, 96)</text>
+
+  <!-- ===== DATA EMBEDDING ===== -->
+  <rect x="95" y="800" width="535" height="290" class="grp"/>
+  <text x="112" y="824" class="grplbl">DataEmbedding</text>
+
+  <rect x="125" y="838" width="475" height="52" rx="3" class="box" fill="#cfe6bf"/>
+  <text x="362" y="860" class="lbl">⊕ PositionalEmbedding : sinusoidal (1, 24, 96), fixed</text>
+  <text x="362" y="879" class="sub">→ Dropout   →   (B, 24, 96)</text>
+
+  <line x1="362" y1="920" x2="362" y2="894" class="ln" marker-end="url(#arr)"/>
+
+  <rect x="125" y="920" width="475" height="52" rx="3" class="box" fill="#f7e3a8"/>
+  <text x="362" y="942" class="lbl">flatten (B·24, 384)  →  fc : Linear(384 → 96)</text>
+  <text x="362" y="961" class="sub">→ view →  (B, 24, 96)</text>
+
+  <line x1="362" y1="1002" x2="362" y2="976" class="ln" marker-end="url(#arr)"/>
+
+  <rect x="125" y="1002" width="475" height="70" rx="3" class="box" fill="#f2b8b0"/>
+  <text x="362" y="1026" class="lbl">ValueEmbedding : Conv1d(1 → 96, kernel 3, stride 3)</text>
+  <text x="362" y="1046" class="sub">view (B·24, 1, 12)   →   (B·24, 96, 4)</text>
+  <text x="362" y="1064" class="sub">"kernel_size" = 3 in config;  12 / 3 = 4 positions per patch</text>
+
+  <!-- skipped time-feature embedding -->
+  <path d="M 655 890 L 604 890" class="lng" marker-end="url(#arrg)"/>
+  <rect x="655" y="855" width="235" height="70" rx="3" class="dead"/>
+  <text x="772" y="879" class="deadt">TimeFeatureEmbedding</text>
+  <text x="772" y="897" class="deads">Linear(5 → 96)  —  skipped:</text>
+  <text x="772" y="915" class="deads">wrapper passes x_mark = None</text>
+
+  <line x1="410" y1="1150" x2="410" y2="1094" class="ln" marker-end="url(#arr)"/>
+
+  <!-- ===== PATCHES ===== -->
+  <g>
+    <rect x="150" y="1150" width="36" height="36" class="box" fill="#7fb2e5"/>
+    <rect x="192" y="1150" width="36" height="36" class="box" fill="#8fd0c0"/>
+    <rect x="234" y="1150" width="36" height="36" class="box" fill="#bfe0a8"/>
+    <rect x="276" y="1150" width="36" height="36" class="box" fill="#f2d98a"/>
+    <rect x="318" y="1150" width="36" height="36" class="box" fill="#efc078"/>
+    <rect x="360" y="1150" width="36" height="36" class="box" fill="#ef9c78"/>
+    <rect x="402" y="1150" width="36" height="36" class="box" fill="#e37f72"/>
+    <rect x="444" y="1150" width="36" height="36" class="box" fill="#d96a6a"/>
+    <text x="502" y="1174" class="lbl">· · ·</text>
+    <rect x="530" y="1150" width="36" height="36" class="box" fill="#8fd0c0"/>
+  </g>
+  <text x="640" y="1163" class="dim">24 patches</text>
+  <text x="640" y="1181" class="dim">12 steps (1 h) each</text>
+
+  <line x1="150" y1="1206" x2="566" y2="1206" class="ln" marker-start="url(#arr)" marker-end="url(#arr)"/>
+  <text x="358" y="1226" class="dimc">patches : (B, 24, 12)   ·   patch length 12 = "dim_in" in config</text>
+
+  <line x1="410" y1="1274" x2="410" y2="1240" class="ln" marker-end="url(#arr)"/>
+
+  <!-- ===== INPUT ===== -->
+  <rect x="150" y="1274" width="520" height="58" class="box" fill="url(#cgm)"/>
+  <text x="410" y="1310" class="lbl">glucose lookback  —  z-score normalized (its own StandardScaler)</text>
+
+  <text x="410" y="1360" class="lbl">Input   (B, 288)   —   288 steps × 5 min = 24 h,  the window CGM-JEPA was pretrained on</text>
+  <text x="410" y="1382" class="dimc">independent of, and longer than, SugarOne's own 128-step input window</text>
+</svg>

@@ -60,6 +60,7 @@ from common.data.loading import (
     resolve_num_workers as resolve_num_workers,
 )
 from common.metrics import mae_rmse_mard as mae_rmse_mard
+from common.metrics_log import EpochMetricsWriter
 from common.checkpoint import (
     read_checkpoint_meta as read_checkpoint_meta,
     update_latest_symlink as _common_update_latest_symlink,
@@ -416,12 +417,35 @@ def train_loop(
     batch_log_every: int = 0,
     eval_batch_log_every: int = 0,
     log_interval_s: float = 0.0,
+    metrics_csv: Path | None = None,
+    extra_metrics_fn=None,
 ) -> SugarOneModel:
     wait = start_wait
     best_epoch = start_best_epoch if start_best_epoch > 0 else max(0, start_epoch - 1)
     last_completed_epoch = max(0, start_epoch - 1)
     total_time = 0.0
     train_batches = len(train_loader)
+
+    # Opt-in: None keeps every existing caller's behaviour byte-for-byte.
+    metrics_writer = EpochMetricsWriter(metrics_csv) if metrics_csv is not None else None
+
+    def _log_metrics_row(epoch: int, train_loss: float, val_loss: float | None, dt: float) -> None:
+        if metrics_writer is None:
+            return
+        row: dict = {
+            "epoch": epoch,
+            "train_loss": float(train_loss),
+            # blank, not 0.0 — a skipped validation is missing data, not a score
+            "val_loss": "" if val_loss is None else float(val_loss),
+            "lr": optimizer.param_groups[0]["lr"],
+            "best_val_loss": best_val_loss if best_val_loss < float("inf") else "",
+            "epoch_seconds": round(dt, 2),
+        }
+        for i, group in enumerate(optimizer.param_groups[1:], start=1):
+            row[f"lr_group{i}"] = group["lr"]
+        if extra_metrics_fn is not None:
+            row.update(extra_metrics_fn())
+        metrics_writer.log(row)
 
     for epoch in range(start_epoch, epochs + 1):
         t0 = time.time()
@@ -440,6 +464,7 @@ def train_loop(
         )
 
         val_loss_str = "SKIP"
+        epoch_val_loss: float | None = None
         should_eval = (
             val_loader is not None
             and (epoch == start_epoch or epoch % val_every_n_epochs == 0 or epoch == epochs)
@@ -453,6 +478,7 @@ def train_loop(
                 split_label="val",
             )
             val_loss_str = f"{val_loss:.6f}"
+            epoch_val_loss = val_loss
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 best_epoch = epoch
@@ -465,6 +491,9 @@ def train_loop(
                 wait += 1
                 if patience > 0 and wait >= patience:
                     typer.echo(f"  Early stopping at epoch {epoch} (patience={patience})")
+                    # Record the stopping epoch before leaving, or the curve is
+                    # missing its final point.
+                    _log_metrics_row(epoch, train_loss, epoch_val_loss, time.time() - t0)
                     break
         elif val_loader is None:
             val_loss_str = "N/A"
@@ -490,6 +519,8 @@ def train_loop(
                 f"val_loss={val_loss_str} | "
                 f"{dt:.1f}s/epoch | ETA: {eta_str}"
             )
+
+        _log_metrics_row(epoch, train_loss, epoch_val_loss, dt)
 
         save_full_checkpoint(
             run_dir / "last_checkpoint.pt",
@@ -522,6 +553,10 @@ def train_loop(
                 ckpt_eval_callback(model, epoch, ckpt_dir)
 
         last_completed_epoch = epoch
+
+    if metrics_writer is not None:
+        metrics_writer.close()
+        echo_plain(f"  Per-epoch metrics: {metrics_csv}")
 
     save_full_checkpoint(
         run_dir / "last_checkpoint.pt",

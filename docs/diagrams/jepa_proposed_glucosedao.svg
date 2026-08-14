@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1600" viewBox="0 0 1300 1600">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+    <marker id="arrb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f6fa8"/>
+    </marker>
+    <marker id="arrr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#a33"/>
+    </marker>
+    <style>
+      text { font-family: "Latin Modern Roman", "Times New Roman", Times, serif; fill: #111; }
+      .lbl  { font-size: 15px; text-anchor: middle; }
+      .sub  { font-size: 12.5px; text-anchor: middle; fill: #444; }
+      .dim  { font-size: 12.5px; font-style: italic; fill: #555; }
+      .dimc { font-size: 12.5px; font-style: italic; fill: #555; text-anchor: middle; }
+      .grplbl { font-size: 15px; font-style: italic; fill: #333; }
+      .big  { font-size: 18px; text-anchor: middle; }
+      .box  { stroke: #333; stroke-width: 1.2; }
+      .grp  { fill: none; stroke: #444; stroke-width: 1.2; stroke-dasharray: 7 4; }
+      .ln   { stroke: #333; stroke-width: 1.4; fill: none; }
+      .lnb  { stroke: #1f6fa8; stroke-width: 1.6; fill: none; stroke-dasharray: 6 3; }
+      .lnr  { stroke: #a33; stroke-width: 1.5; fill: none; stroke-dasharray: 5 3; }
+      .warn { font-size: 12.5px; fill: #a33; }
+      .warnc{ font-size: 12.5px; fill: #a33; text-anchor: middle; }
+    </style>
+  </defs>
+  <rect width="1300" height="1600" fill="#ffffff"/>
+
+  <text x="650" y="38" class="big">Proposed JEPA implementation — GlucoseDAO context</text>
+  <text x="650" y="60" class="dimc">our own encoder + our own SSL objective, trained on our own unlabelled glucose  ·  rung 3 of the guide's ladder</text>
+
+  <!-- ladder banner -->
+  <rect x="30" y="80" width="1240" height="76" rx="3" class="box" fill="#f4f4f4"/>
+  <text x="45" y="101" class="dim">Guide's ladder:   rung 1 — glucodensity images → small CNN (cheapest, no pretraining)   ·   rung 2 — released pretrained encoder, frozen, embeddings into our model</text>
+  <text x="45" y="121" class="dim">rung 3 — pretrain the encoder ourselves  (this diagram)</text>
+  <text x="45" y="145" class="warn">The guide calls rung 3 out of scope for a 1.5-week timeline. It is drawn because it is what "our own implementation" means — but rungs 1 and 2 are the cheap checks that should gate it.</text>
+
+  <!-- ===== OUTPUTS (top) ===== -->
+  <text x="650" y="182" class="big">Outputs</text>
+
+  <rect x="330" y="200" width="640" height="56" rx="3" class="box" fill="#b8dcef"/>
+  <text x="650" y="223" class="lbl">→ SugarOne integration   (see jepa_sugarone_integration_proposed.svg)</text>
+  <text x="650" y="242" class="sub">three injection points: concat at the bottleneck · FiLM · 4th cross-attention stream</text>
+
+  <line x1="650" y1="300" x2="650" y2="260" class="ln" marker-end="url(#arr)"/>
+
+  <rect x="180" y="300" width="420" height="64" rx="3" class="box" fill="#cfe6bf"/>
+  <text x="390" y="323" class="lbl">patch sequence :  (B, 16, 96)</text>
+  <text x="390" y="342" class="sub">one embedding per patch — for the cross-attention route</text>
+  <text x="390" y="359" class="sub">project 96 → 32 to use as K / V</text>
+
+  <rect x="700" y="300" width="420" height="64" rx="3" class="box" fill="#cfe6bf"/>
+  <text x="910" y="323" class="lbl">mean-pool → z :  (B, 96)</text>
+  <text x="910" y="342" class="sub">one vector per window — for concat / FiLM</text>
+  <text x="910" y="359" class="sub">reduce to 8 / 16 / 32 (PCA or learned) + rescale</text>
+
+  <rect x="700" y="386" width="420" height="40" rx="3" class="box" fill="#fdecec" stroke="#a33"/>
+  <text x="910" y="411" class="warnc">96 raw dims would swamp a 32-wide model — reduce first</text>
+
+  <line x1="390" y1="470" x2="390" y2="368" class="ln" marker-end="url(#arr)"/>
+  <line x1="910" y1="470" x2="910" y2="368" class="ln" marker-end="url(#arr)"/>
+
+  <rect x="330" y="470" width="640" height="56" rx="3" class="box" fill="#e8eef5"/>
+  <text x="650" y="493" class="lbl">encoder.pt   —   trained JepaEncoder weights (E_θ), plain state_dict</text>
+  <text x="650" y="512" class="sub">scripts/sugar_one/pretrained/jepa_128_p8/</text>
+
+  <!-- dashed link from context encoder up the left margin -->
+  <path d="M 150 880 L 60 880 L 60 498 L 330 498" class="lnb" marker-end="url(#arrb)"/>
+  <text x="70" y="700" class="dim" fill="#1f6fa8">trained weights</text>
+
+  <!-- ===== SSL CORE ===== -->
+  <rect x="30" y="560" width="1240" height="470" class="grp"/>
+  <text x="46" y="583" class="grplbl">Self-supervised pretraining loop  —  masked latent prediction (this is what makes it JEPA)</text>
+  <text x="46" y="602" class="warn">the loss lives in representation space; the model never reconstructs glucose values, so it has no output head and cannot forecast on its own</text>
+
+  <!-- loss -->
+  <rect x="330" y="625" width="560" height="66" rx="3" class="box" fill="#f7e3a8"/>
+  <text x="610" y="649" class="lbl">loss = smooth-L1 ( P(context) ,  stopgrad( E_ξ(target) ) )</text>
+  <text x="610" y="668" class="sub">predicted target latents vs. EMA-encoded target latents — both (B, N_tgt, 96)</text>
+  <text x="610" y="685" class="sub">gradients flow only into E_θ and P</text>
+
+  <!-- collapse monitor -->
+  <rect x="940" y="625" width="310" height="86" rx="3" class="box" fill="#fdecec" stroke="#a33"/>
+  <text x="1095" y="648" class="lbl">collapse monitor</text>
+  <text x="1095" y="667" class="sub">per-dim variance · rank · cosine sim</text>
+  <text x="1095" y="684" class="sub">between windows, logged every epoch</text>
+  <text x="1095" y="703" class="warnc">flat variance ⇒ dead run, ignore metrics</text>
+  <path d="M 940 660 L 895 660" class="lnr" marker-end="url(#arrr)"/>
+
+  <!-- predictor -->
+  <line x1="390" y1="740" x2="450" y2="696" class="ln" marker-end="url(#arr)"/>
+  <line x1="900" y1="800" x2="810" y2="696" class="ln" marker-end="url(#arr)"/>
+  <text x="880" y="760" class="dim">stop-grad</text>
+
+  <rect x="150" y="740" width="480" height="66" rx="3" class="box" fill="#f2b8b0"/>
+  <text x="390" y="763" class="lbl">Predictor  P   —   narrow transformer (dim 48, 2 layers)</text>
+  <text x="390" y="782" class="sub">context latents + mask tokens + target position embeddings</text>
+  <text x="390" y="799" class="sub">→ predicted target latents  (B, N_tgt, 96)</text>
+
+  <line x1="390" y1="880" x2="390" y2="812" class="ln" marker-end="url(#arr)"/>
+  <text x="402" y="852" class="dim">(B, N_ctx, 96)</text>
+
+  <!-- encoders -->
+  <rect x="150" y="880" width="480" height="76" rx="3" class="box" fill="#cfe6bf"/>
+  <text x="390" y="904" class="lbl">Context encoder  E_θ   —   JepaEncoder (trainable)</text>
+  <text x="390" y="923" class="sub">patch embed + 3 pre-norm blocks, embed_dim 96, 6 heads</text>
+  <text x="390" y="941" class="sub">sees only the context patches</text>
+
+  <rect x="700" y="880" width="480" height="76" rx="3" class="box" fill="#e8eef5"/>
+  <text x="940" y="904" class="lbl">Target encoder  E_ξ   —   EMA copy, requires_grad = False</text>
+  <text x="940" y="923" class="sub">same architecture, no gradients, .eval()</text>
+  <text x="940" y="941" class="sub">sees only the target patches  →  (B, N_tgt, 96)</text>
+
+  <path d="M 630 918 L 700 918" class="lnb" marker-end="url(#arrb)"/>
+  <text x="665" y="985" class="dimc" fill="#1f6fa8">EMA:  ξ ← m·ξ + (1−m)·θ</text>
+  <text x="665" y="1003" class="dimc" fill="#1f6fa8">m : 0.996 → 1.0 (cosine)</text>
+
+  <!-- ===== MASKING ===== -->
+  <line x1="390" y1="1100" x2="390" y2="1035" class="ln" marker-end="url(#arr)"/>
+  <line x1="940" y1="1100" x2="940" y2="1035" class="ln" marker-end="url(#arr)"/>
+  <text x="402" y="1075" class="dim">context patches</text>
+  <text x="952" y="1075" class="dim">target patches</text>
+
+  <rect x="150" y="1100" width="1030" height="66" rx="3" class="box" fill="#e9f2e3"/>
+  <text x="665" y="1123" class="lbl">Multi-block masking  (I-JEPA style, scaled down)</text>
+  <text x="665" y="1142" class="sub">sample M = 4 target blocks of 2–4 contiguous patches; context = the remaining patches, target positions removed</text>
+  <text x="665" y="1159" class="sub">16 patches is a much shorter sequence than an image's 196 — block count / size need a sanity pass, not the paper's constants</text>
+
+  <line x1="395" y1="1235" x2="395" y2="1172" class="ln" marker-end="url(#arr)"/>
+  <text x="407" y="1210" class="dim">(B, 16, 96) patch embeddings</text>
+
+  <!-- ===== VIEWS ===== -->
+  <rect x="150" y="1235" width="490" height="76" rx="3" class="box" fill="#f2b8b0"/>
+  <text x="395" y="1258" class="lbl">View A — raw glucose patches   (chosen)</text>
+  <text x="395" y="1277" class="sub">patchify (B, 128) → (B, 16, 8);  Conv1d(1 → 96, k = 8, stride 8)</text>
+  <text x="395" y="1295" class="sub">patch = 8 steps = 40 min;  instance z-score per window</text>
+
+  <rect x="700" y="1235" width="480" height="76" rx="3" class="box" fill="#f7f0f0" stroke-dasharray="6 3"/>
+  <text x="940" y="1258" class="lbl">View B — glucodensity image   (rung 1, not wired here)</text>
+  <text x="940" y="1277" class="sub">smooth → 1st / 2nd derivative → three 2-D histograms</text>
+  <text x="940" y="1295" class="sub">(B, 3, 32, 32) → 8×8 spatial patches → a CNN, per the guide</text>
+
+  <line x1="395" y1="1380" x2="395" y2="1317" class="ln" marker-end="url(#arr)"/>
+  <line x1="940" y1="1380" x2="940" y2="1317" class="lnb" marker-end="url(#arrb)"/>
+
+  <!-- ===== DATA ===== -->
+  <rect x="150" y="1380" width="1030" height="76" rx="3" class="box" fill="#e8eef5"/>
+  <text x="665" y="1403" class="lbl">Adapter  (our code)  —  reuse JEPA's math, not its I / O</text>
+  <text x="665" y="1422" class="sub">cut sliding windows: never cross a data gap, never mix two patients in one window  →  glucose window (B, 128)</text>
+  <text x="665" y="1440" class="warnc">train split only — val / test rows must never reach the SSL stage, or every downstream forecasting number is contaminated</text>
+
+  <line x1="665" y1="1520" x2="665" y2="1462" class="ln" marker-end="url(#arr)"/>
+
+  <rect x="150" y="1520" width="1030" height="56" rx="3" class="box" fill="#f7e3a8"/>
+  <text x="665" y="1543" class="lbl">Standard table  —  glucose_data_processing,  StandardFieldNames</text>
+  <text x="665" y="1562" class="sub">Loop dataset (public, insulin + carbs, ~1000 participants)  ·  uv sync / uv add — never uv pip install</text>
+
+  <!-- window decision callout -->
+  <rect x="700" y="1182" width="480" height="42" rx="3" class="box" fill="#fdecec" stroke="#a33"/>
+  <text x="940" y="1208" class="warnc">open decision: the guide says day = 288; we use 128 to match SugarOne</text>
+</svg>

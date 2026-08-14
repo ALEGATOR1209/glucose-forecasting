@@ -1,0 +1,275 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1600" viewBox="0 0 1300 1600">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+    <marker id="arrg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#999"/>
+    </marker>
+    <linearGradient id="cgm" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#7fb2e5"/>
+      <stop offset="30%"  stop-color="#8fd0c0"/>
+      <stop offset="60%"  stop-color="#f2d98a"/>
+      <stop offset="100%" stop-color="#d96a6a"/>
+    </linearGradient>
+    <style>
+      text { font-family: "Latin Modern Roman", "Times New Roman", Times, serif; fill: #111; }
+      .lbl  { font-size: 15px; text-anchor: middle; }
+      .sub  { font-size: 12.5px; text-anchor: middle; fill: #444; }
+      .dim  { font-size: 12.5px; font-style: italic; fill: #555; }
+      .dimc { font-size: 12.5px; font-style: italic; fill: #555; text-anchor: middle; }
+      .grplbl { font-size: 15px; font-style: italic; fill: #333; }
+      .big  { font-size: 18px; text-anchor: middle; }
+      .box  { stroke: #333; stroke-width: 1.2; }
+      .grp  { fill: none; stroke: #444; stroke-width: 1.2; stroke-dasharray: 7 4; }
+      .sg   { stroke: #aaa; stroke-width: 1; }
+      .new  { stroke: #1f6fa8; stroke-width: 2; }
+      .ln   { stroke: #333; stroke-width: 1.4; fill: none; }
+      .lnb  { stroke: #1f6fa8; stroke-width: 1.8; fill: none; }
+      .lng  { stroke: #999; stroke-width: 1.2; fill: none; stroke-dasharray: 5 3; }
+      .warn { font-size: 13px; fill: #a33; }
+    </style>
+  </defs>
+
+  <rect width="1300" height="1600" fill="#ffffff"/>
+
+  <!-- legend -->
+  <g>
+    <rect x="30" y="30" width="16" height="12" class="box" fill="#f2b8b0"/>
+    <text x="54" y="40" class="dim">attention</text>
+    <rect x="30" y="52" width="16" height="12" class="box" fill="#f7e3a8"/>
+    <text x="54" y="62" class="dim">linear / FFN</text>
+    <rect x="30" y="74" width="16" height="12" class="box" fill="#cfe6bf"/>
+    <text x="54" y="84" class="dim">embedding / mixing</text>
+    <rect x="30" y="96" width="16" height="12" class="new" fill="#b8dcef"/>
+    <text x="54" y="106" class="dim">added by SugarJepa (vs. SugarOne)</text>
+  </g>
+
+  <!-- OUTPUT -->
+  <text x="660" y="46" class="big">Output targets</text>
+  <text x="660" y="68" class="dimc">ŷ : (B, 12)   —   60 min horizon</text>
+  <line x1="660" y1="100" x2="660" y2="78" class="ln" marker-end="url(#arr)"/>
+
+  <rect x="530" y="100" width="260" height="46" rx="3" class="box" fill="#dfe7f2"/>
+  <text x="660" y="129" class="lbl">out_fc : Linear(32 → 12)</text>
+
+  <line x1="660" y1="205" x2="660" y2="150" class="ln" marker-end="url(#arr)"/>
+  <text x="672" y="182" class="dim">(B, 32)</text>
+
+  <!-- HEAD -->
+  <rect x="470" y="205" width="380" height="196" class="grp"/>
+  <text x="458" y="291" class="grplbl" text-anchor="end">Dimensionality</text>
+  <text x="458" y="311" class="grplbl" text-anchor="end">reduction layers</text>
+  <text x="458" y="335" class="dim" text-anchor="end">unchanged from SugarOne</text>
+
+  <rect x="500" y="225" width="320" height="56" rx="3" class="box" fill="#f7e3a8"/>
+  <text x="660" y="249" class="lbl">Dense : flatten_fc  Linear(4096 → 32)</text>
+  <text x="660" y="269" class="sub">GELU + Dropout(0.1)</text>
+
+  <line x1="660" y1="341" x2="660" y2="285" class="ln" marker-end="url(#arr)"/>
+  <text x="672" y="317" class="dim">(B, 4096)</text>
+
+  <rect x="500" y="341" width="320" height="46" rx="3" class="box" fill="#faeecd"/>
+  <text x="660" y="370" class="lbl">Flatten : (B, 32, 128) → (B, 4096)</text>
+
+  <line x1="660" y1="445" x2="660" y2="405" class="ln" marker-end="url(#arr)"/>
+  <text x="672" y="430" class="dim">(128, B, 32)</text>
+
+  <!-- BLOCK GROUP -->
+  <rect x="50" y="445" width="1215" height="610" class="grp"/>
+  <text x="66" y="468" class="grplbl">SugarJepa parallel block  × 5</text>
+  <text x="66" y="487" class="dim">only the glucose stream is updated — basal / bolus / carbs / jepa are re-read unchanged by every block</text>
+
+  <path d="M 1265 520 L 1285 520 L 1285 1030 L 1265 1030" class="ln" marker-end="url(#arr)"/>
+
+  <rect x="420" y="502" width="480" height="50" rx="3" class="box" fill="#dfe7f2"/>
+  <text x="660" y="525" class="lbl">ln_fuse ( cross_out + ms_out )</text>
+  <text x="660" y="543" class="sub">(128, B, 32)</text>
+
+  <line x1="250" y1="762" x2="500" y2="557" class="ln" marker-end="url(#arr)"/>
+  <line x1="855" y1="682" x2="775" y2="557" class="ln" marker-end="url(#arr)"/>
+
+  <!-- multi-scale subgroup -->
+  <rect x="70" y="592" width="360" height="425" rx="4" class="sg" fill="#fdf6f5"/>
+  <text x="250" y="616" class="lbl">Multi-scale self-attention</text>
+  <text x="250" y="634" class="sub">glucose only — identical to SugarOne</text>
+
+  <rect x="90" y="762" width="320" height="56" rx="3" class="box" fill="#f7e3a8"/>
+  <text x="250" y="784" class="lbl">high + up2 + up4,  FFN 32→128→32</text>
+  <text x="250" y="803" class="sub">ln2 residual  →  (128, B, 32)</text>
+
+  <line x1="140" y1="872" x2="190" y2="822" class="ln" marker-end="url(#arr)"/>
+  <line x1="250" y1="872" x2="250" y2="822" class="ln" marker-end="url(#arr)"/>
+  <line x1="360" y1="872" x2="315" y2="822" class="ln" marker-end="url(#arr)"/>
+
+  <rect x="88" y="872" width="104" height="95" rx="3" class="box" fill="#f2b8b0"/>
+  <text x="140" y="898" class="lbl">DS = 1</text>
+  <text x="140" y="919" class="sub">self-attn</text>
+  <text x="140" y="939" class="sub">(128, B, 32)</text>
+
+  <rect x="200" y="872" width="104" height="95" rx="3" class="box" fill="#f6cdc7"/>
+  <text x="252" y="898" class="lbl">DS = 2</text>
+  <text x="252" y="919" class="sub">AvgPool(2)</text>
+  <text x="252" y="939" class="sub">(64, B, 32)</text>
+  <text x="252" y="958" class="sub">interp ↑ 128</text>
+
+  <rect x="312" y="872" width="104" height="95" rx="3" class="box" fill="#f6cdc7"/>
+  <text x="364" y="898" class="lbl">DS = 4</text>
+  <text x="364" y="919" class="sub">AvgPool(4)</text>
+  <text x="364" y="939" class="sub">(32, B, 32)</text>
+  <text x="364" y="958" class="sub">interp ↑ 128</text>
+
+  <!-- cross-attention subgroup -->
+  <rect x="470" y="592" width="775" height="425" rx="4" class="sg" fill="#f7fbf5"/>
+  <text x="857" y="616" class="lbl">Cross-attention  —  4 auxiliaries  (SugarOne has 3)</text>
+  <text x="857" y="634" class="sub">Q = glucose (128 positions)   ·   K / V = basal, bolus, carbs (128 positions), jepa (24 positions)</text>
+
+  <rect x="490" y="682" width="715" height="50" rx="3" class="box" fill="#f7e3a8"/>
+  <text x="847" y="703" class="lbl">FFN 32 → 128 → 32,  ln2 residual</text>
+  <text x="847" y="722" class="sub">(128, B, 32)</text>
+
+  <line x1="847" y1="752" x2="847" y2="736" class="ln" marker-end="url(#arr)"/>
+
+  <rect x="490" y="752" width="715" height="54" rx="3" class="box" fill="#cfe6bf"/>
+  <text x="847" y="774" class="lbl">merged = Σᵢ softmax(mix_logits)[i] · resᵢ</text>
+  <text x="847" y="794" class="sub">mix_logits : (4,)  —  learnable 4-way mix   ·   SugarOne's is (3,)</text>
+
+  <line x1="847" y1="826" x2="847" y2="810" class="ln" marker-end="url(#arr)"/>
+
+  <rect x="490" y="826" width="715" height="34" rx="3" class="box" fill="#e9f2e3"/>
+  <text x="847" y="848" class="sub">ln1 : glucose + dropout(out)  —  one shared LayerNorm</text>
+
+  <line x1="570" y1="890" x2="570" y2="864" class="ln" marker-end="url(#arr)"/>
+  <line x1="755" y1="890" x2="755" y2="864" class="ln" marker-end="url(#arr)"/>
+  <line x1="940" y1="890" x2="940" y2="864" class="ln" marker-end="url(#arr)"/>
+  <line x1="1125" y1="890" x2="1125" y2="864" class="lnb" marker-end="url(#arr)"/>
+
+  <rect x="490" y="890" width="160" height="77" rx="3" class="box" fill="#f2b8b0"/>
+  <text x="570" y="915" class="lbl">MHA basal</text>
+  <text x="570" y="936" class="sub">K / V : (128, B, 32)</text>
+  <text x="570" y="955" class="sub">32 dim, 8 heads</text>
+
+  <rect x="675" y="890" width="160" height="77" rx="3" class="box" fill="#f2b8b0"/>
+  <text x="755" y="915" class="lbl">MHA bolus</text>
+  <text x="755" y="936" class="sub">K / V : (128, B, 32)</text>
+  <text x="755" y="955" class="sub">32 dim, 8 heads</text>
+
+  <rect x="860" y="890" width="160" height="77" rx="3" class="box" fill="#f2b8b0"/>
+  <text x="940" y="915" class="lbl">MHA carbs</text>
+  <text x="940" y="936" class="sub">K / V : (128, B, 32)</text>
+  <text x="940" y="955" class="sub">32 dim, 8 heads</text>
+
+  <rect x="1045" y="890" width="160" height="77" rx="3" class="new" fill="#b8dcef"/>
+  <text x="1125" y="915" class="lbl">MHA jepa</text>
+  <text x="1125" y="936" class="sub">K / V : (24, B, 32)</text>
+  <text x="1125" y="955" class="sub">32 dim, 8 heads</text>
+
+  <text x="1125" y="1000" class="warn" text-anchor="middle">↑ 24 K/V positions, not 128 —</text>
+  <text x="1125" y="1016" class="warn" text-anchor="middle">no step-to-patch alignment</text>
+
+  <!-- STREAM ROUTING -->
+  <line x1="150" y1="1092" x2="250" y2="1019" class="ln" marker-end="url(#arr)"/>
+  <line x1="150" y1="1092" x2="540" y2="1019" class="ln" marker-end="url(#arr)"/>
+  <text x="330" y="1066" class="dim">Q = glucose</text>
+
+  <line x1="300" y1="1092" x2="570" y2="972" class="ln" marker-end="url(#arr)"/>
+  <line x1="450" y1="1092" x2="755" y2="972" class="ln" marker-end="url(#arr)"/>
+  <line x1="600" y1="1092" x2="940" y2="972" class="ln" marker-end="url(#arr)"/>
+  <line x1="1080" y1="1120" x2="1125" y2="972" class="lnb" marker-end="url(#arr)"/>
+
+  <!-- positional encoding (main streams) -->
+  <rect x="85" y="1092" width="580" height="48" rx="3" class="box" fill="#cfe6bf"/>
+  <text x="375" y="1113" class="lbl">+ PositionalEncoding  (sinusoidal, (1, 5000, 32))</text>
+  <text x="375" y="1132" class="sub">(B, 128, 32) each  →  permute →  (128, B, 32)</text>
+
+  <line x1="150" y1="1174" x2="150" y2="1144" class="ln" marker-end="url(#arr)"/>
+  <line x1="300" y1="1174" x2="300" y2="1144" class="ln" marker-end="url(#arr)"/>
+  <line x1="450" y1="1174" x2="450" y2="1144" class="ln" marker-end="url(#arr)"/>
+  <line x1="600" y1="1174" x2="600" y2="1144" class="ln" marker-end="url(#arr)"/>
+
+  <rect x="85" y="1174" width="130" height="50" rx="3" class="box" fill="#f7e3a8"/>
+  <text x="150" y="1195" class="sub">embed_glucose</text>
+  <text x="150" y="1214" class="sub">Linear(1 → 32)</text>
+
+  <rect x="235" y="1174" width="130" height="50" rx="3" class="box" fill="#f7e3a8"/>
+  <text x="300" y="1195" class="sub">embed_basal</text>
+  <text x="300" y="1214" class="sub">Linear(1 → 32)</text>
+
+  <rect x="385" y="1174" width="130" height="50" rx="3" class="box" fill="#f7e3a8"/>
+  <text x="450" y="1195" class="sub">embed_bolus</text>
+  <text x="450" y="1214" class="sub">Linear(1 → 32)</text>
+
+  <rect x="535" y="1174" width="130" height="50" rx="3" class="box" fill="#f7e3a8"/>
+  <text x="600" y="1195" class="sub">embed_carbs</text>
+  <text x="600" y="1214" class="sub">Linear(1 → 32)</text>
+
+  <line x1="150" y1="1268" x2="150" y2="1228" class="ln" marker-end="url(#arr)"/>
+  <line x1="300" y1="1268" x2="300" y2="1228" class="ln" marker-end="url(#arr)"/>
+  <line x1="450" y1="1268" x2="450" y2="1228" class="ln" marker-end="url(#arr)"/>
+  <line x1="600" y1="1268" x2="600" y2="1228" class="ln" marker-end="url(#arr)"/>
+
+  <rect x="85" y="1268" width="130" height="52" class="box" fill="#f6b0a8"/>
+  <text x="150" y="1291" class="lbl">glucose</text>
+  <text x="150" y="1310" class="sub">(B, 128, 1)</text>
+
+  <rect x="235" y="1268" width="130" height="52" class="box" fill="#f7d9a0"/>
+  <text x="300" y="1291" class="lbl">basal</text>
+  <text x="300" y="1310" class="sub">(B, 128, 1)</text>
+
+  <rect x="385" y="1268" width="130" height="52" class="box" fill="#bfe0b0"/>
+  <text x="450" y="1291" class="lbl">bolus</text>
+  <text x="450" y="1310" class="sub">(B, 128, 1)</text>
+
+  <rect x="535" y="1268" width="130" height="52" class="box" fill="#a8d4ec"/>
+  <text x="600" y="1291" class="lbl">carbs</text>
+  <text x="600" y="1310" class="sub">(B, 128, 1)</text>
+
+  <text x="375" y="1345" class="lbl">x : (B, 128, 4)   —   MinMax-scaled  [0, 1]</text>
+
+  <!-- ===== JEPA BRANCH (right column) ===== -->
+  <rect x="750" y="1070" width="500" height="375" rx="4" class="grp" stroke="#1f6fa8"/>
+  <text x="1000" y="1094" class="grplbl" text-anchor="middle" fill="#1f6fa8">JEPA branch  —  separate, longer, glucose-only lookback</text>
+
+  <rect x="790" y="1120" width="420" height="50" rx="3" class="new" fill="#b8dcef"/>
+  <text x="1000" y="1141" class="lbl">JepaEncoderWrapper.proj : Linear(96 → 32)</text>
+  <text x="1000" y="1159" class="sub">→ permute →  (24, B, 32)</text>
+
+  <line x1="1000" y1="1200" x2="1000" y2="1174" class="lnb" marker-end="url(#arr)"/>
+
+  <rect x="790" y="1200" width="420" height="78" rx="3" class="box" fill="#f2b8b0" stroke-dasharray="6 3"/>
+  <text x="1000" y="1224" class="lbl">CGM-JEPA Encoder  —  FROZEN</text>
+  <text x="1000" y="1244" class="sub">3 blocks, embed_dim 96, 6 heads   →   hidden (B, 24, 96)</text>
+  <text x="1000" y="1263" class="sub">eval() + torch.no_grad()   ·   see cgm_jepa_architecture.svg</text>
+
+  <line x1="1000" y1="1310" x2="1000" y2="1282" class="lnb" marker-end="url(#arr)"/>
+  <text x="1012" y="1302" class="dim">(B, 24, 12)</text>
+
+  <rect x="790" y="1310" width="420" height="34" rx="3" class="box" fill="#e8eef5"/>
+  <text x="1000" y="1332" class="sub">patchify : view (B, 288) → (B, 24, 12)</text>
+
+  <line x1="1000" y1="1376" x2="1000" y2="1348" class="lnb" marker-end="url(#arr)"/>
+
+  <rect x="790" y="1376" width="420" height="52" class="box" fill="url(#cgm)"/>
+  <text x="1000" y="1399" class="lbl">glucose_jepa : (B, 288)</text>
+  <text x="1000" y="1418" class="sub">z-score (own StandardScaler, fit on train)</text>
+
+  <!-- ===== WINDOW TIMELINE ===== -->
+  <rect x="50" y="1450" width="1215" height="130" class="grp" stroke="#a33"/>
+  <text x="66" y="1472" class="grplbl" fill="#a33">The window mismatch — both views end at the same "now"</text>
+
+  <!-- 288 bar -->
+  <rect x="250" y="1490" width="600" height="26" class="box" fill="#e8eef5"/>
+  <rect x="583" y="1490" width="267" height="26" class="box" fill="#cfe6bf"/>
+  <rect x="850" y="1490" width="25" height="26" class="box" fill="#f6b0a8"/>
+
+  <text x="416" y="1508" class="sub">jepa_window = 288  (24 h)  —  glucose only</text>
+  <text x="716" y="1508" class="sub">input_steps = 128</text>
+
+  <line x1="850" y1="1483" x2="850" y2="1524" stroke="#a33" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="850" y="1478" class="dimc" fill="#a33">now</text>
+  <text x="905" y="1508" class="dim">horizon = 12</text>
+
+  <line x1="250" y1="1536" x2="850" y2="1536" class="ln" marker-start="url(#arr)" marker-end="url(#arr)"/>
+  <text x="550" y="1554" class="dimc">lookback = max(input_steps, jepa_window) = 288  →  every window needs 288 + 12 = 300 steps of history</text>
+  <text x="550" y="1572" class="warn" text-anchor="middle">consequence: series shorter than 300 steps yield zero windows — ~41% of dev-CSV series are silently dropped</text>
+</svg>

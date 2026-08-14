@@ -100,6 +100,108 @@ class JepaEncoderWrapper(nn.Module):
         # hidden: (batch, num_patches, embed_dim) -> (num_patches, batch, d_model)
         return self.proj(hidden).permute(1, 0, 2)
 
+class JepaBlock(nn.Module):
+    """Pre-norm transformer block — CGM-JEPA's utils/modules.py:Block, reimplemented."""
+
+    def __init__(
+        self,
+        dim: int,
+        n_heads: int,
+        mlp_ratio: float = 4.0,
+        dropout: float = 0.0
+    ):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(dim)
+        self.attn = nn.MultiheadAttention(dim, n_heads, dropout=dropout, batch_first=True)
+        self.norm2 = nn.LayerNorm(dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, int(dim * mlp_ratio)),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(int(dim * mlp_ratio), dim),
+            nn.Dropout(dropout),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h = self.norm1(x)
+        x = x + self.attn(h, h, h, need_weights=False)[0]
+        return x + self.mlp(self.norm2(x))
+
+
+class JepaEncoder(nn.Module):
+    """Our own JEPA encoder — replaces JepaEncoderWrapper (no pretrained CGM-JEPA).
+
+    glucose (batch, n_time_steps)  ->  patch embeddings (batch, n_patches, embed_dim)
+
+    Differences from the vendored CGM-JEPA Encoder it is modelled on:
+      - one Conv1d does patchify + embed in a single op (upstream's ValueEmbedding
+        convolves *within* each patch and then flattens through a Linear — a shape
+        that only exists to match their checkpoint);
+      - no time-feature embedding and no mask branch (upstream never runs either
+        at inference: x_mark=None and jepa=False);
+      - no `proj` MLP head — that is the SSL projection, dead weight for forecasting.
+
+    Normalisation is a per-window instance z-score, so the encoder is invariant to
+    the global MinMax scaling applied by SugarOneWindowDataset. That is what lets
+    the same weights be pretrained on raw mg/dL and then fine-tuned on MinMax-scaled
+    x[..., 0] without a distribution shift.
+    """
+
+    def __init__(
+        self,
+        n_time_steps: int,
+        patch_size: int = 8,
+        embed_dim: int = 96,
+        n_layers: int = 3,
+        n_heads: int = 6,
+        mlp_ratio: float = 4.0,
+        dropout: float = 0.0,
+        norm: str = "instance",
+    ):
+        super().__init__()
+
+        if n_time_steps % patch_size != 0:
+            raise ValueError(
+                f"n_time_steps ({n_time_steps}) must be divisible by "
+                f"patch_size ({patch_size})"
+            )
+        if norm not in ("instance", "none"):
+            raise ValueError(f"norm must be 'instance' or 'none', got {norm!r}")
+
+        self.n_patches = n_time_steps // patch_size
+        self.embed_dim = embed_dim
+        self.patch_size = patch_size
+        self.norm_mode = norm
+
+        self.patch_embed = nn.Conv1d(1, embed_dim, kernel_size=patch_size, stride=patch_size)
+        self.pos_enc = PositionalEncoding(embed_dim, max_len=self.n_patches)
+        self.blocks = nn.ModuleList(
+            [JepaBlock(embed_dim, n_heads, mlp_ratio, dropout) for _ in range(n_layers)]
+        )
+        self.norm = nn.LayerNorm(embed_dim)
+
+    def forward(self, glucose: torch.Tensor, keep: torch.Tensor | None = None) -> torch.Tensor:
+        """glucose: (batch, n_time_steps). keep: (batch, k) patch indices, or None.
+
+        `keep` selects the context patches and is only used by self-supervised
+        pretraining; the forecaster always passes None (encode every patch).
+        """
+        if self.norm_mode == "instance":
+            mean = glucose.mean(dim=1, keepdim=True)
+            std = glucose.std(dim=1, keepdim=True).clamp_min(1e-6)
+            glucose = (glucose - mean) / std
+
+        x = self.patch_embed(glucose.unsqueeze(1)).transpose(1, 2)  # (B, n_patches, embed_dim)
+        x = self.pos_enc(x)                                          # + sinusoidal positions
+
+        if keep is not None:
+            x = x.gather(1, keep.unsqueeze(-1).expand(-1, -1, x.size(-1)))
+
+        for blk in self.blocks:
+            x = blk(x)
+
+        return self.norm(x)                                          # (B, n_patches, embed_dim)
+
 
 class CrossAttentionSugarJepaBlock(nn.Module):
     """
@@ -118,12 +220,17 @@ class CrossAttentionSugarJepaBlock(nn.Module):
         n_heads: int,
         ff_units: int,
         dropout: float = 0.1,
+        batch_first: bool = False,
     ):
         super().__init__()
-        self.attn_basal = nn.MultiheadAttention(d_model, n_heads, dropout=dropout)
-        self.attn_bolus = nn.MultiheadAttention(d_model, n_heads, dropout=dropout)
-        self.attn_carbs = nn.MultiheadAttention(d_model, n_heads, dropout=dropout)
-        self.attn_jepa = nn.MultiheadAttention(d_model, n_heads, dropout=dropout)
+        # Attention always runs batch-first internally; `batch_first=False` only
+        # means the block's *external* contract is (seq, batch, d_model), which
+        # is what SugarJepaModel passes. Parameters are identical either way.
+        self.batch_first = batch_first
+        self.attn_basal = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
+        self.attn_bolus = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
+        self.attn_carbs = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
+        self.attn_jepa = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
 
         # Learnable 4-way mixing: after softmax these become non-negative and sum to 1.
         self.mix_logits = nn.Parameter(torch.zeros(4))
@@ -140,12 +247,17 @@ class CrossAttentionSugarJepaBlock(nn.Module):
 
     def forward(
         self,
-        glucose: torch.Tensor,   # (seq, batch, d_model)
+        glucose: torch.Tensor,   # (batch, seq, d_model) if batch_first else (seq, batch, d_model)
         basal: torch.Tensor,
         bolus: torch.Tensor,
         carbs: torch.Tensor,
-        jepa: torch.Tensor,      # (jepa_seq, batch, d_model)
+        jepa: torch.Tensor,      # same layout; jepa_seq may differ from seq
     ) -> torch.Tensor:
+        if not self.batch_first:
+            glucose, basal, bolus, carbs, jepa = (
+                t.transpose(0, 1) for t in (glucose, basal, bolus, carbs, jepa)
+            )
+
         out_basal, _ = self.attn_basal(glucose, basal, basal)
         out_bolus, _ = self.attn_bolus(glucose, bolus, bolus)
         out_carbs, _ = self.attn_carbs(glucose, carbs, carbs)
@@ -160,7 +272,8 @@ class CrossAttentionSugarJepaBlock(nn.Module):
         merged = w[0] * res_basal + w[1] * res_bolus + w[2] * res_carbs + w[3] * res_jepa
 
         ff = self.ffn(merged)
-        return self.ln2(merged + self.dropout(ff))
+        out = self.ln2(merged + self.dropout(ff))
+        return out if self.batch_first else out.transpose(0, 1)
 
 
 class MultiScaleAttentionBlock(nn.Module):
@@ -175,11 +288,13 @@ class MultiScaleAttentionBlock(nn.Module):
         n_heads: int,
         ff_units: int,
         dropout: float = 0.1,
+        batch_first: bool = False,
     ):
         super().__init__()
-        self.attn_high = nn.MultiheadAttention(d_model, n_heads, dropout=dropout)
-        self.attn_low2 = nn.MultiheadAttention(d_model, n_heads, dropout=dropout)
-        self.attn_low4 = nn.MultiheadAttention(d_model, n_heads, dropout=dropout)
+        self.batch_first = batch_first
+        self.attn_high = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
+        self.attn_low2 = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
+        self.attn_low4 = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
 
         self.pool2 = nn.AvgPool1d(kernel_size=2, stride=2)
         self.pool4 = nn.AvgPool1d(kernel_size=4, stride=4)
@@ -194,30 +309,41 @@ class MultiScaleAttentionBlock(nn.Module):
             nn.Linear(ff_units, d_model),
         )
 
+    @staticmethod
+    def _downscale_attend_upscale(
+        xt: torch.Tensor,                 # (batch, d_model, seq) — channels-first
+        pool: nn.AvgPool1d,
+        attn: nn.MultiheadAttention,
+        seq_len: int,
+    ) -> torch.Tensor:
+        """Pool to a coarser resolution, self-attend there, upsample back.
+
+        The transposes are the AvgPool1d/interpolate <-> attention boundary:
+        the conv-style ops are channels-first, attention is (batch, seq, d_model).
+        """
+        low = pool(xt).transpose(1, 2)                   # (batch, seq//k, d_model)
+        out, _ = attn(low, low, low)
+        return F.interpolate(
+            out.transpose(1, 2), size=seq_len, mode="nearest"
+        ).transpose(1, 2)                                # (batch, seq, d_model)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """x: (seq_len, batch, d_model)."""
-        seq_len = x.size(0)
+        """x: (batch, seq, d_model) if batch_first else (seq, batch, d_model)."""
+        if not self.batch_first:
+            x = x.transpose(0, 1)
+        seq_len = x.size(1)
 
         high_out, _ = self.attn_high(x, x, x)
         high = self.ln1(x + self.dropout(high_out))
 
-        xt = high.permute(1, 2, 0)  # (batch, d_model, seq)
-
-        low2 = self.pool2(xt).permute(2, 0, 1)
-        low2_out, _ = self.attn_low2(low2, low2, low2)
-        up2 = F.interpolate(
-            low2_out.permute(1, 2, 0), size=seq_len, mode="nearest"
-        ).permute(2, 0, 1)
-
-        low4 = self.pool4(xt).permute(2, 0, 1)
-        low4_out, _ = self.attn_low4(low4, low4, low4)
-        up4 = F.interpolate(
-            low4_out.permute(1, 2, 0), size=seq_len, mode="nearest"
-        ).permute(2, 0, 1)
+        xt = high.transpose(1, 2)
+        up2 = self._downscale_attend_upscale(xt, self.pool2, self.attn_low2, seq_len)
+        up4 = self._downscale_attend_upscale(xt, self.pool4, self.attn_low4, seq_len)
 
         fused = high + self.dropout(up2) + self.dropout(up4)
         ff = self.ffn(fused)
-        return self.ln2(fused + self.dropout(ff))
+        out = self.ln2(fused + self.dropout(ff))
+        return out if self.batch_first else out.transpose(0, 1)
 
 
 class SugarJepaParallelBlock(nn.Module):
@@ -232,10 +358,16 @@ class SugarJepaParallelBlock(nn.Module):
         n_heads: int,
         ff_units: int,
         dropout: float = 0.1,
+        batch_first: bool = False,
     ):
         super().__init__()
-        self.cross_attn = CrossAttentionSugarJepaBlock(d_model, n_heads, ff_units, dropout)
-        self.multiscale = MultiScaleAttentionBlock(d_model, n_heads, ff_units, dropout)
+        self.batch_first = batch_first
+        self.cross_attn = CrossAttentionSugarJepaBlock(
+            d_model, n_heads, ff_units, dropout, batch_first=batch_first
+        )
+        self.multiscale = MultiScaleAttentionBlock(
+            d_model, n_heads, ff_units, dropout, batch_first=batch_first
+        )
         self.ln_fuse = nn.LayerNorm(d_model)
 
     def forward(
@@ -246,7 +378,9 @@ class SugarJepaParallelBlock(nn.Module):
         carbs: torch.Tensor,
         jepa: torch.Tensor,
     ) -> torch.Tensor:
-        """All inputs: (seq_len, batch, d_model), jepa may have a different seq_len. Returns glucose's shape."""
+        """All inputs share the block's layout — (batch, seq, d_model) when
+        batch_first, else (seq, batch, d_model). `jepa` may have a different
+        seq length. Returns glucose's shape."""
         cross_out = self.cross_attn(glucose, basal, bolus, carbs, jepa)
         ms_out = self.multiscale(glucose)
         return self.ln_fuse(cross_out + ms_out)
@@ -339,6 +473,97 @@ class SugarJepaModel(nn.Module):
             out = block(out, b_e, bo_e, c_e, jepa_e)
 
         out = out.permute(1, 2, 0)          # (batch, d_model, seq)
+        out = out.reshape(out.size(0), -1)  # (batch, d_model * seq)
+        out = self.dropout(F.gelu(self.flatten_fc(out)))
+        return self.out_fc(out)             # (batch, horizon)
+
+class SugarJepaModel2(nn.Module):
+    """
+    SugarJepa: SugarOne's Multimodal Parallel-Attention Transformer, plus
+    JEPA glucose encoder as a 4th cross-attention auxiliary.
+
+    Input:  x (batch, n_time_steps, 4) — [glucose, basal, bolus, carbs]
+    Output: (batch, prediction_horizon)
+    """
+
+    def __init__(
+        self,
+        n_time_steps: int,
+        n_features: int = 4,
+        d_model: int = 32,
+        n_heads: int = 4,
+        ff_units: int = 128,
+        n_blocks: int = 3,
+        prediction_horizon: int = 12,
+        dropout: float = 0.1,
+        jepa_patch_size: int = 8,
+        jepa_heads: int = 6,
+        jepa_layers: int = 3,
+        jepa_embed_dim: int = 96,
+        jepa_mlp_ratio: float = 4.0,
+        jepa_dropout: float = 0.0,
+        jepa_norm: str = "instance",
+    ):
+        super().__init__()
+        self.n_time_steps = n_time_steps
+        self.d_model = d_model
+        self.n_features = n_features
+
+        self.embed_glucose = nn.Linear(1, d_model)
+        self.embed_basal = nn.Linear(1, d_model)
+        self.embed_bolus = nn.Linear(1, d_model)
+        self.embed_carbs = nn.Linear(1, d_model)
+
+        self.pos_enc = PositionalEncoding(d_model, max_len=n_time_steps)
+
+        self.jepa_encoder = JepaEncoder(
+            n_time_steps=n_time_steps,
+            patch_size=jepa_patch_size,
+            embed_dim=jepa_embed_dim,
+            n_layers=jepa_layers,
+            n_heads=jepa_heads,
+            mlp_ratio=jepa_mlp_ratio,
+            dropout=jepa_dropout,
+            norm=jepa_norm,
+        )
+
+        # Patch embeddings -> K/V stream at the backbone's width.
+        self.jepa_proj = nn.Linear(jepa_embed_dim, d_model)
+
+        # Batch-first throughout, unlike SugarJepaModel — no permutes anywhere.
+        self.blocks = nn.ModuleList(
+            [
+                SugarJepaParallelBlock(d_model, n_heads, ff_units, dropout, batch_first=True)
+                for _ in range(n_blocks)
+            ]
+        )
+
+        self.flatten_fc = nn.Linear(d_model * n_time_steps, d_model)
+        self.out_fc = nn.Linear(d_model, prediction_horizon)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """x: (batch, seq, 4) — glucose, basal, bolus, carbs"""
+        g = x[..., 0:1]  # (batch, seq, 1)
+        b = x[..., 1:2]  # basal rate
+        bo = x[..., 2:3]  # bolus insulin
+        c = x[..., 3:4]  # carbohydrates
+
+        g_e = self.pos_enc(self.embed_glucose(g))    # (batch, seq, d_model)
+        b_e = self.pos_enc(self.embed_basal(b))
+        bo_e = self.pos_enc(self.embed_bolus(bo))
+        c_e = self.pos_enc(self.embed_carbs(c))
+
+        # JEPA reads the same window, glucose channel only, and yields one K/V
+        # position per patch (n_patches = seq // jepa_patch_size).
+        jepa_e = self.jepa_encoder(x[..., 0])   # (batch, n_patches, embed_dim)
+        jepa_e = self.jepa_proj(jepa_e)         # (batch, n_patches, d_model)
+
+        out = g_e
+        for block in self.blocks:
+            out = block(out, b_e, bo_e, c_e, jepa_e)
+
+        out = out.transpose(1, 2)           # (batch, d_model, seq)
         out = out.reshape(out.size(0), -1)  # (batch, d_model * seq)
         out = self.dropout(F.gelu(self.flatten_fc(out)))
         return self.out_fc(out)             # (batch, horizon)

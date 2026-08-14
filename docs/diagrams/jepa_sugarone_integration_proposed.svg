@@ -1,0 +1,175 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1200" viewBox="0 0 1300 1200">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+    <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2e7d32"/>
+    </marker>
+    <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#b8860b"/>
+    </marker>
+    <marker id="arrC" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f6fa8"/>
+    </marker>
+    <style>
+      text { font-family: "Latin Modern Roman", "Times New Roman", Times, serif; fill: #111; }
+      .lbl  { font-size: 15px; text-anchor: middle; }
+      .sub  { font-size: 12.5px; text-anchor: middle; fill: #444; }
+      .dim  { font-size: 12.5px; font-style: italic; fill: #555; }
+      .dimc { font-size: 12.5px; font-style: italic; fill: #555; text-anchor: middle; }
+      .grplbl { font-size: 15px; font-style: italic; fill: #333; }
+      .big  { font-size: 18px; text-anchor: middle; }
+      .box  { stroke: #333; stroke-width: 1.2; }
+      .grp  { fill: none; stroke: #444; stroke-width: 1.2; stroke-dasharray: 7 4; }
+      .ln   { stroke: #333; stroke-width: 1.4; fill: none; }
+      .lnA  { stroke: #2e7d32; stroke-width: 2; fill: none; }
+      .lnB  { stroke: #b8860b; stroke-width: 2; fill: none; stroke-dasharray: 7 3; }
+      .lnC  { stroke: #1f6fa8; stroke-width: 2; fill: none; stroke-dasharray: 7 3; }
+      .tagA { font-size: 15px; fill: #2e7d32; font-weight: bold; }
+      .tagB { font-size: 15px; fill: #b8860b; font-weight: bold; }
+      .tagC { font-size: 15px; fill: #1f6fa8; font-weight: bold; }
+    </style>
+  </defs>
+  <rect width="1300" height="1200" fill="#ffffff"/>
+
+  <text x="650" y="36" class="big">Proposed JEPA → SugarOne integration — three injection points, one shared 128-step window</text>
+  <text x="650" y="58" class="dimc">the JEPA branch reads the same lookback as the model, so the dataset contract stays (x, y) and no series are dropped</text>
+
+  <!-- ladder / legend -->
+  <rect x="30" y="78" width="1240" height="86" rx="3" class="box" fill="#f7f7f7"/>
+  <text x="46" y="100" class="tagA">A — concat at the bottleneck</text>
+  <text x="360" y="100" class="dim">h (B, 32) ⊕ z (B, 16) → (B, 48) → out_fc Linear(48 → 12).   Least invasive — the guide says start here.</text>
+  <text x="46" y="126" class="tagB">B — FiLM modulation</text>
+  <text x="360" y="126" class="dim">γ, β = Linear(16 → 64) from z;  h ← γ ⊙ h + β.   Injects the state without widening any input.</text>
+  <text x="46" y="152" class="tagC">C — 4th cross-attn stream</text>
+  <text x="360" y="152" class="dim">patch sequence (16, B, 32) as K / V, mix_logits (3,) → (4,).   Most faithful, most work — the PoC's route.</text>
+
+  <!-- ===== OUTPUT ===== -->
+  <text x="810" y="212" class="big">ŷ : (B, 12)</text>
+  <line x1="810" y1="270" x2="810" y2="226" class="ln" marker-end="url(#arr)"/>
+
+  <rect x="650" y="270" width="320" height="56" rx="3" class="box" fill="#dfe7f2"/>
+  <text x="810" y="293" class="lbl">out_fc : Linear(32 → 12)</text>
+  <text x="810" y="312" class="sub">under A :  Linear(48 → 12)</text>
+
+  <!-- concat node -->
+  <circle cx="810" cy="380" r="18" class="box" fill="#cfe6bf"/>
+  <text x="810" y="386" class="lbl">⊕</text>
+  <text x="850" y="376" class="dim" fill="#2e7d32">A : concat →  (B, 48)</text>
+  <text x="850" y="393" class="dim" fill="#b8860b">B : FiLM  →  (B, 32), unchanged width</text>
+
+  <line x1="810" y1="362" x2="810" y2="330" class="ln" marker-end="url(#arr)"/>
+  <line x1="810" y1="460" x2="810" y2="400" class="ln" marker-end="url(#arr)"/>
+  <text x="822" y="435" class="dim">h : (B, 32)</text>
+
+  <!-- dense -->
+  <rect x="650" y="460" width="320" height="56" rx="3" class="box" fill="#f7e3a8"/>
+  <text x="810" y="483" class="lbl">Dense : flatten_fc  Linear(4096 → 32)</text>
+  <text x="810" y="502" class="sub">GELU + Dropout</text>
+
+  <line x1="810" y1="580" x2="810" y2="520" class="ln" marker-end="url(#arr)"/>
+  <text x="822" y="556" class="dim">(B, 4096)</text>
+
+  <rect x="650" y="580" width="320" height="46" rx="3" class="box" fill="#faeecd"/>
+  <text x="810" y="609" class="lbl">Flatten :  (B, 32, 128) → (B, 4096)</text>
+
+  <line x1="810" y1="700" x2="810" y2="630" class="ln" marker-end="url(#arr)"/>
+  <text x="822" y="670" class="dim">(128, B, 32)</text>
+
+  <!-- block group -->
+  <rect x="600" y="700" width="420" height="180" rx="3" class="box" fill="#f7fbf5"/>
+  <text x="810" y="726" class="lbl">SugarOne parallel block  × 5</text>
+  <text x="810" y="748" class="sub">cross-attention  (Q = glucose;  K / V = basal, bolus, carbs)</text>
+  <text x="810" y="766" class="sub">‖  multi-scale self-attention  (DS = 1, 2, 4)</text>
+  <text x="810" y="784" class="sub">ln_fuse ( cross_out + ms_out )  →  (128, B, 32)</text>
+  <rect x="620" y="800" width="380" height="60" rx="3" class="box" fill="#e8f0e6" stroke-dasharray="5 3" stroke="#1f6fa8"/>
+  <text x="810" y="822" class="sub" fill="#1f6fa8">under C :  a 4th head  attn_jepa  is added here</text>
+  <text x="810" y="840" class="sub" fill="#1f6fa8">mix_logits : (3,) → (4,)   ·   K / V = (16, B, 32)</text>
+  <text x="810" y="857" class="sub" fill="#1f6fa8">16 K / V positions vs. 128 query positions</text>
+
+  <line x1="810" y1="960" x2="810" y2="884" class="ln" marker-end="url(#arr)"/>
+  <text x="822" y="928" class="dim">(128, B, 32)</text>
+
+  <!-- embeddings + posenc -->
+  <rect x="600" y="960" width="420" height="56" rx="3" class="box" fill="#cfe6bf"/>
+  <text x="810" y="983" class="lbl">embed  glucose / basal / bolus / carbs :  Linear(1 → 32)</text>
+  <text x="810" y="1002" class="sub">+ PositionalEncoding  →  permute →  (128, B, 32)</text>
+
+  <line x1="810" y1="1090" x2="810" y2="1020" class="ln" marker-end="url(#arr)"/>
+
+  <rect x="600" y="1090" width="420" height="56" class="box" fill="#f6b0a8"/>
+  <text x="810" y="1113" class="lbl">x : (B, 128, 4)</text>
+  <text x="810" y="1132" class="sub">glucose, basal, bolus, carbs  —  MinMax-scaled</text>
+
+  <!-- ===== JEPA BRANCH (left) ===== -->
+  <rect x="40" y="330" width="480" height="820" class="grp" stroke="#1f6fa8"/>
+  <text x="60" y="356" class="grplbl" fill="#1f6fa8">JEPA branch  —  trains with the model (own LR group, never frozen)</text>
+
+  <rect x="70" y="380" width="420" height="76" rx="3" class="box" fill="#cfe6bf"/>
+  <text x="280" y="404" class="lbl">rescale  →  z : (B, 16)</text>
+  <text x="280" y="423" class="sub">match the numeric range of the other inputs</text>
+  <text x="280" y="441" class="sub">so the embedding cannot dominate the model's own signal</text>
+
+  <line x1="280" y1="520" x2="280" y2="462" class="ln" marker-end="url(#arr)"/>
+  <text x="292" y="497" class="dim">(B, 16)</text>
+
+  <rect x="70" y="520" width="420" height="76" rx="3" class="box" fill="#f7e3a8"/>
+  <text x="280" y="544" class="lbl">reduce :  Linear(96 → 16)   or   PCA</text>
+  <text x="280" y="563" class="sub">try 8 / 16 / 32 — one change at a time, fixed split</text>
+  <text x="280" y="581" class="sub">96 dims into a 32-wide model overfits and swamps it</text>
+
+  <line x1="280" y1="660" x2="280" y2="602" class="ln" marker-end="url(#arr)"/>
+  <text x="292" y="637" class="dim">(B, 96)</text>
+
+  <rect x="70" y="660" width="420" height="56" rx="3" class="box" fill="#e9f2e3"/>
+  <text x="280" y="683" class="lbl">mean-pool over the 16 patches</text>
+  <text x="280" y="702" class="sub">simple default; pooling choice is an experiment, not a given</text>
+
+  <line x1="280" y1="800" x2="280" y2="722" class="ln" marker-end="url(#arr)"/>
+  <text x="292" y="766" class="dim">(B, 16, 96)</text>
+
+  <rect x="70" y="800" width="420" height="86" rx="3" class="box" fill="#f2b8b0"/>
+  <text x="280" y="824" class="lbl">JepaEncoder  (ours)</text>
+  <text x="280" y="843" class="sub">patch embed + 3 pre-norm blocks, embed_dim 96, 6 heads</text>
+  <text x="280" y="861" class="sub">init : random (stage 1)  or  SSL encoder.pt (stage 2)</text>
+  <text x="280" y="879" class="sub">→ (B, 16, 96)     see jepa_proposed_glucosedao.svg</text>
+
+  <line x1="280" y1="960" x2="280" y2="892" class="ln" marker-end="url(#arr)"/>
+  <text x="292" y="930" class="dim">(B, 16, 8) patches</text>
+
+  <rect x="70" y="960" width="420" height="56" rx="3" class="box" fill="#e8eef5"/>
+  <text x="280" y="983" class="lbl">instance z-score  +  patchify → (B, 16, 8)</text>
+  <text x="280" y="1002" class="sub">per-window mean / std — no extra scaler to plumb</text>
+
+  <line x1="280" y1="1090" x2="280" y2="1020" class="ln" marker-end="url(#arr)"/>
+
+  <rect x="70" y="1090" width="420" height="56" class="box" fill="#f6b0a8"/>
+  <text x="280" y="1113" class="lbl">glucose : (B, 128)</text>
+  <text x="280" y="1132" class="sub">the SAME 128-step window  —  read from x[..., 0]</text>
+
+  <!-- ===== INJECTION CONNECTORS ===== -->
+  <!-- C: patch sequence -> block -->
+  <path d="M 490 843 L 555 843 L 555 830 L 616 830" class="lnC" marker-end="url(#arrC)"/>
+  <text x="533" y="822" class="tagC">C</text>
+  <text x="380" y="782" class="dim" fill="#1f6fa8">C : patch seq → Linear(96 → 32)</text>
+
+  <!-- B: FiLM -->
+  <path d="M 490 418 L 560 418 L 560 490 L 646 490" class="lnB" marker-end="url(#arrB)"/>
+  <text x="570" y="410" class="tagB">B</text>
+  <text x="586" y="466" class="dim" fill="#b8860b">γ, β = Linear(16 → 64)</text>
+
+  <!-- A: concat -->
+  <path d="M 490 400 L 600 400 L 600 380 L 788 380" class="lnA" marker-end="url(#arrA)"/>
+  <text x="606" y="366" class="tagA">A</text>
+
+  <!-- staging note -->
+  <rect x="1050" y="700" width="230" height="180" rx="3" class="box" fill="#f7f7f7"/>
+  <text x="1165" y="726" class="lbl">Staging</text>
+  <text x="1165" y="750" class="sub">0 — SugarOne baseline,</text>
+  <text x="1165" y="767" class="sub">same split, same seed</text>
+  <text x="1165" y="791" class="sub">1 — A with a random-init</text>
+  <text x="1165" y="808" class="sub">encoder (+ capacity control)</text>
+  <text x="1165" y="832" class="sub">2 — A with the SSL encoder</text>
+  <text x="1165" y="856" class="sub">3 — only then B or C</text>
+</svg>

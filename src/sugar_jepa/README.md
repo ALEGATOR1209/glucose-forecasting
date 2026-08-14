@@ -144,3 +144,29 @@ still works (`from_pretrained` accepts a Hub id or local path interchangeably) i
    (`docs/GLUMIND_VS_SUGARONE_COMPARISON.md`, the per-model/dataset `data/output/marked_runs/*/RUNS_ANALYSIS.md`
    writeups) rather than treating this as
    a one-off side experiment.
+
+## Second architecture track: `JepaEncoder` trained in-house (not wired to `train_sugar_jepa.py` yet)
+
+Alongside the frozen, upstream-pretrained `JepaEncoderWrapper` path above, this folder also has a second,
+independent JEPA track that trains its own encoder from scratch on this project's data instead of loading
+CGM-JEPA's pretrained weights:
+
+- [`jepa_pretrain.py`](jepa_pretrain.py) — self-supervised masked-latent pretraining of `JepaEncoder`
+  (Conv1d patchify + sinusoidal positions + pre-norm blocks) over the 128-step glucose window, EMA target
+  encoder, smooth-L1 loss in latent space. Writes `encoder.pt` / `encoder_best.pt` / `pretrain_metrics.csv`
+  / diagnostic plots (see [`encoder_plots.py`](encoder_plots.py)) under a timestamped run dir.
+- [`glucodensity.py`](glucodensity.py) / [`export_glucodensity.py`](export_glucodensity.py) — maps glucose
+  windows to glucodensity images (KDE, adapted from CGM-JEPA's `glucodensity_utils.py`) and precomputes
+  paired `(window, image)` `.npz` arrays for offline/Colab use.
+- [`x_jepa_pretrain.py`](x_jepa_pretrain.py) / [`x_jepa_train.py`](x_jepa_train.py) — X-CGM-JEPA: a
+  cross-modal predictor trained jointly on the CGM window and its glucodensity image
+  (`L_total = L_CGM + w * L_Glu`), reusing `jepa_pretrain.py`'s CGM half unchanged. Pretrained encoder
+  checkpoints live under `pretrained/xcgm_jepa/`.
+
+This track's own model class is `SugarJepaModel2` in [`sugar_jepa_model.py`](sugar_jepa_model.py) —
+batch-first throughout (no permutes), single `forward(x)` signature, and a trainable (not frozen)
+`JepaEncoder` instead of `JepaEncoderWrapper`. **`train_sugar_jepa.py` currently builds `SugarJepaModel`,
+not `SugarJepaModel2`**, so `run_downstream.sh`'s `--jepa-init` flag and the encoder checkpoints this
+track produces are not yet consumable by the CLI trainer above — wiring `SugarJepaModel2` (and a
+`--jepa-init` flag) into `train_sugar_jepa.py`, or adding it as a `glucose evaluate`-compatible model
+family in its own right, is open follow-up work.

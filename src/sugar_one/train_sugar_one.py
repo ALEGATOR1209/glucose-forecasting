@@ -87,6 +87,7 @@ def load_splits_streaming(
     csv_path: Path,
     unique_id_choice: str,
     drop_interpolated: bool,
+    keep_columns: tuple[str, ...] = (),
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """Lazy CSV scan — returns (train, val, test) DataFrames."""
     return _common_load_splits_streaming(
@@ -105,6 +106,7 @@ def load_splits_streaming(
         },
         ts_format=TS_FORMAT,
         utf8_value_columns=("basal", "bolus", "carbs"),
+        keep_columns=keep_columns,
         log_fn=typer.echo,
     )
 

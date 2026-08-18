@@ -19,6 +19,7 @@ COL_STEPS = "Step Count"
 COL_BASAL = "Basal Rate (U/h)"
 COL_BOLUS = "Bolus Insulin (U)"
 COL_CARB = "Carbohydrates (g)"
+COL_USER = "User ID"
 
 TS_FORMAT = "%Y-%m-%dT%H:%M:%S"
 

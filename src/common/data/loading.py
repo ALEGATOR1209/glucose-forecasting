@@ -76,6 +76,7 @@ def load_splits_streaming(
     value_columns: dict[str, str],
     ts_format: str,
     utf8_value_columns: tuple[str, ...] = (),
+    keep_columns: tuple[str, ...] = (),
     log_fn=print,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """Lazy CSV scan via Polars — returns (train, val, test) DataFrames.
@@ -100,7 +101,7 @@ def load_splits_streaming(
         if src is not None:
             schema_overrides[src] = pl.Utf8
 
-    select_cols = [uid_col, col_ts, col_split, col_group, col_event, *value_columns.values()]
+    select_cols = [uid_col, col_ts, col_split, col_group, col_event, *value_columns.values(), *keep_columns]
     rename_map = {
         uid_col: "unique_id",
         col_ts: "ds",

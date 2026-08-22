@@ -1,0 +1,7 @@
+{
+  "epoch": 19,
+  "holdout_pred_loss": 0.07357628957985284,
+  "latent_std": 0.8286213874816895,
+  "eff_rank": 16.71245765686035,
+  "criterion": "lowest holdout prediction loss among epochs with a healthy (non-collapsing) representation"
+}

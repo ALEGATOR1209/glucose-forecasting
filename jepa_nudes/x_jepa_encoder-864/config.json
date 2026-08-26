@@ -1,0 +1,8 @@
+{
+  "n_time_steps": 864,
+  "patch_size": 8,
+  "embed_dim": 96,
+  "n_layers": 3,
+  "n_heads": 6,
+  "norm": "instance"
+}

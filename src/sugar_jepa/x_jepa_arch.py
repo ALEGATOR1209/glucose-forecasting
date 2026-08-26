@@ -207,6 +207,27 @@ def momentum_at(step, total_steps, base, final=1.0):
     return final - (final - base) * (math.cos(math.pi * progress) + 1) / 2
 
 
+@torch.no_grad()
+def collapse_metrics(latents):
+    """(latent_std, effective_rank) of an encoder's output, for collapse watch."""
+    z = latents.reshape(-1, latents.size(-1)).float()
+    std = z.std(dim=0).mean().item()
+
+    zc = z - z.mean(dim=0, keepdim=True)
+    cov = (zc.T @ zc) / max(z.size(0) - 1, 1)
+    ev = torch.linalg.eigvalsh(cov).clamp_min(0)
+    denom = (ev**2).sum()
+    eff_rank = (ev.sum() ** 2 / denom).item() if denom > 0 else 0.0
+    return std, eff_rank
+
+
+def variance_penalty(latents, target_std):
+    """VICReg-style hinge: penalise any latent dim whose std falls below target_std."""
+    z = latents.reshape(-1, latents.size(-1))
+    std = torch.sqrt(z.var(dim=0) + 1e-8)
+    return F.relu(target_std - std).mean()
+
+
 def sigreg(z, num_slices=256, k=17):
     n, d = z.shape
     a = torch.randn(d, num_slices, device=z.device, dtype=z.dtype)
@@ -222,6 +243,29 @@ def sigreg(z, num_slices=256, k=17):
     return per_dir.mean()
 
 
+def cgm_forward_loss(encoder, target_encoder, predictor, glucose, ctx_idx, tgt_idx,
+                      var_weight=0.0, var_target=0.5):
+    """Verbatim port of jepa_pretrain.py's _forward_loss — the plain CGM-only
+    JEPA objective, unchanged. Returns (total, pred_loss, var_loss, full, context)."""
+    batch = glucose.size(0)
+
+    with torch.no_grad():
+        full = target_encoder(glucose)
+        targets = full[:, tgt_idx, :].detach()
+
+    keep = ctx_idx.unsqueeze(0).expand(batch, -1)
+    context = encoder(glucose, keep=keep)
+    pred = predictor(context, ctx_idx, tgt_idx)
+    pred_loss = F.smooth_l1_loss(pred, targets)
+
+    if var_weight > 0.0:
+        var_loss = variance_penalty(context, var_target)
+    else:
+        var_loss = torch.zeros((), device=pred_loss.device, dtype=pred_loss.dtype)
+
+    return pred_loss + var_weight * var_loss, pred_loss.detach(), var_loss.detach(), full.detach(), context
+
+
 def x_forward_loss(
     cgm_encoder, cgm_encoder_ema, cgm_predictor,
     glu_encoder, glu_predictor,
@@ -229,26 +273,31 @@ def x_forward_loss(
     cgm_ctx_idx, cgm_tgt_idx, gluco_tgt_idx,
     gluco_loss_weight=1.0,
     sigreg_weight=0.0,
+    cgm_var_weight=0.0,
+    cgm_var_target=0.5,
 ):
-    b = glucose.size(0)
-
-    with torch.no_grad():
-        cgm_full = cgm_encoder_ema(glucose)
-        cgm_targets = cgm_full[:, cgm_tgt_idx, :].detach()
-
-    keep = cgm_ctx_idx.unsqueeze(0).expand(b, -1)
-    cgm_context = cgm_encoder(glucose, keep=keep)
-    cgm_pred = cgm_predictor(cgm_context, cgm_ctx_idx, cgm_tgt_idx)
-    cgm_loss = F.smooth_l1_loss(cgm_pred, cgm_targets)
+    """CGM half is exactly cgm_forward_loss (plain jepa_pretrain.py's objective,
+    untouched); the glucodensity half is a pure addition on top — cgm_context is
+    detached before it reaches glu_predictor, so no gradient from the cross-modal
+    loss ever reaches cgm_encoder. Returns (total, cgm_loss, gluco_loss, reg,
+    cgm_var_loss, cgm_full) — cgm_full is the EMA target's full output, for
+    collapse_metrics.
+    """
+    cgm_total, cgm_loss, cgm_var_loss, cgm_full, cgm_context = cgm_forward_loss(
+        cgm_encoder, cgm_encoder_ema, cgm_predictor,
+        glucose, cgm_ctx_idx, cgm_tgt_idx,
+        var_weight=cgm_var_weight, var_target=cgm_var_target,
+    )
+    cgm_context = cgm_context.detach()
 
     glu_full = glu_encoder(gluco_img)
     reg = sigreg(glu_full.reshape(-1, glu_full.size(-1))) if sigreg_weight > 0 else glu_full.new_zeros(())
     glu_full = F.layer_norm(glu_full, (glu_full.size(-1),))
     glu_targets = glu_full[:, gluco_tgt_idx, :]
 
-    gluco_masks = gluco_tgt_idx.unsqueeze(0).expand(b, -1)
+    gluco_masks = gluco_tgt_idx.unsqueeze(0).expand(cgm_context.size(0), -1)
     glu_pred = glu_predictor(cgm_context, gluco_masks)
     gluco_loss = F.l1_loss(glu_pred, glu_targets)
 
-    total = cgm_loss + gluco_loss_weight * gluco_loss + sigreg_weight * reg
-    return total, cgm_loss.detach(), gluco_loss.detach(), reg.detach()
+    total = cgm_total + gluco_loss_weight * gluco_loss + sigreg_weight * reg
+    return total, cgm_loss, gluco_loss.detach(), reg.detach(), cgm_var_loss, cgm_full
